@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scam Sentry &mdash; Job Advertisement Verifier</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="grain"></div>
+
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <div class="brand">
+      <span class="brand-mark">&#9633;</span>
+      <span class="brand-text">SCAM&nbsp;SENTRY</span>
+    </div>
+    <div class="brand-sub">Job Advertisement Verification Desk &mdash; Group 44</div>
+  </div>
+</header>
+
+<main class="wrap main-grid">
+
+  <section class="intake-panel">
+    <p class="eyebrow">Case Intake</p>
+    <h1>Submit a job ad for examination.</h1>
+    <p class="lede">Paste the posting, or hand over a PDF / screenshot. The desk
+      runs OCR, language analysis, and a fraud-pattern sweep, then returns a
+      signed verdict with the evidence behind it.</p>
+
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-tab="paste" role="tab">Paste text</button>
+      <button class="tab" data-tab="upload" role="tab">Upload file</button>
+    </div>
+
+    <form id="paste-form" class="tab-panel active" data-panel="paste">
+      <textarea id="job-text" placeholder="Paste the full job advertisement here &mdash; title, company, description, requirements, contact details..." rows="12"></textarea>
+      <div class="panel-footer">
+        <span class="hint" id="char-count">0 characters</span>
+        <button type="submit" class="btn-primary">Examine posting</button>
+      </div>
+    </form>
+
+    <form id="upload-form" class="tab-panel" data-panel="upload">
+      <label class="dropzone" id="dropzone" for="file-input">
+        <input type="file" id="file-input" accept=".pdf,.png,.jpg,.jpeg" hidden>
+        <div class="dz-icon">&#8615;</div>
+        <div class="dz-text">
+          <strong id="dz-filename">Drop a PDF or image here</strong>
+          <span>or click to browse &mdash; PDF, JPG, JPEG, PNG</span>
+        </div>
+      </label>
+      <div class="panel-footer">
+        <span class="hint" id="file-hint">No file selected</span>
+        <button type="submit" class="btn-primary" id="upload-btn" disabled>Examine posting</button>
+      </div>
+    </form>
+
+    <div class="pipeline">
+      <span>Text</span><i>&rarr;</i><span>OCR</span><i>&rarr;</i><span>NLP</span><i>&rarr;</i><span>TF&#8209;IDF</span><i>&rarr;</i><span>Fraud rules</span><i>&rarr;</i><span>Classifier</span>
+    </div>
+  </section>
+
+  <section class="result-panel" id="result-panel">
+
+    <div class="placeholder" id="placeholder">
+      <div class="stamp-outline">?</div>
+      <p>No case opened yet.<br>Submit a posting to see its verdict here.</p>
+    </div>
+
+    <div class="scanning" id="scanning" hidden>
+      <div class="scan-line"></div>
+      <p id="scanning-text">Reading document&hellip;</p>
+    </div>
+
+    <article class="report" id="report" hidden>
+
+      <div class="report-head">
+        <div>
+          <p class="eyebrow">Verdict</p>
+          <div class="verdict-row">
+            <span class="stamp" id="stamp">GENUINE</span>
+            <span class="risk-chip" id="risk-chip">LOW RISK</span>
+          </div>
+        </div>
+        <div class="score-dial" id="score-dial">
+          <svg viewBox="0 0 120 120" width="96" height="96">
+            <circle cx="60" cy="60" r="52" class="dial-track"></circle>
+            <circle cx="60" cy="60" r="52" class="dial-fill" id="dial-fill"></circle>
+          </svg>
+          <div class="score-number">
+            <span id="score-value">0</span><small>%</small>
+          </div>
+        </div>
+      </div>
+
+      <p class="score-caption" id="score-caption">Confidence score</p>
+
+      <div class="report-body">
+        <h2>Evidence &amp; Explanation</h2>
+        <p class="no-evidence" id="no-evidence" hidden></p>
+        <ol class="evidence-list" id="evidence-list"></ol>
+
+        <div class="tech-readout">
+          <div class="readout-item">
+            <span>Fraud-pattern score</span>
+            <strong id="rule-score-val">&mdash;</strong>
+          </div>
+          <div class="readout-item">
+            <span>ML text-model score</span>
+            <strong id="ml-score-val">&mdash;</strong>
+          </div>
+          <div class="readout-item">
+            <span>Detected company</span>
+            <strong id="company-val">&mdash;</strong>
+          </div>
+          <div class="readout-item">
+            <span>Input source</span>
+            <strong id="source-val">&mdash;</strong>
+          </div>
+        </div>
+
+        <details class="raw-text">
+          <summary>View extracted text</summary>
+          <pre id="extracted-preview"></pre>
+        </details>
+      </div>
+
+      <p class="disclaimer">This is an AI-assisted risk assessment, not a legal
+        determination. Always independently verify an employer before paying
+        any money or sharing personal documents.</p>
+    </article>
+
+    <div class="error-box" id="error-box" hidden></div>
+
+  </section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap">Intelligent Fake Job Advertisement Detection System &mdash; General Sir John Kotelawala Defence University, Faculty of Computing</div>
+</footer>
+
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
