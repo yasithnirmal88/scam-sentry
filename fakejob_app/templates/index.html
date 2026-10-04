@@ -1,149 +1,293 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Scam Sentry &mdash; Job Advertisement Verifier</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scam Sentry &mdash; AI Fake Job Detection System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 
-<div class="grain"></div>
+  <!-- Background Ambience & Cyber Network Canvas -->
+  <canvas id="bg-canvas" class="bg-canvas"></canvas>
+  <div class="ambient-glow glow-top"></div>
+  <div class="ambient-glow glow-bottom"></div>
+  <div class="grid-overlay"></div>
+  <div class="scan-beam beam-1"></div>
+  <div class="scan-beam beam-2"></div>
+  <div class="scan-beam beam-3"></div>
 
-<header class="topbar">
-  <div class="wrap topbar-inner">
-    <div class="brand">
-      <span class="brand-mark">&#9633;</span>
-      <span class="brand-text">SCAM&nbsp;SENTRY</span>
-    </div>
-    <div class="brand-sub">Job Advertisement Verification Desk &mdash; Group 44</div>
-  </div>
-</header>
-
-<main class="wrap main-grid">
-
-  <section class="intake-panel">
-    <p class="eyebrow">Case Intake</p>
-    <h1>Submit a job ad for examination.</h1>
-    <p class="lede">Paste the posting, or hand over a PDF / screenshot. The desk
-      runs OCR, language analysis, and a fraud-pattern sweep, then returns a
-      signed verdict with the evidence behind it.</p>
-
-    <div class="tabs" role="tablist">
-      <button class="tab active" data-tab="paste" role="tab">Paste text</button>
-      <button class="tab" data-tab="upload" role="tab">Upload file</button>
-    </div>
-
-    <form id="paste-form" class="tab-panel active" data-panel="paste">
-      <textarea id="job-text" placeholder="Paste the full job advertisement here &mdash; title, company, description, requirements, contact details..." rows="12"></textarea>
-      <div class="panel-footer">
-        <span class="hint" id="char-count">0 characters</span>
-        <button type="submit" class="btn-primary">Examine posting</button>
-      </div>
-    </form>
-
-    <form id="upload-form" class="tab-panel" data-panel="upload">
-      <label class="dropzone" id="dropzone" for="file-input">
-        <input type="file" id="file-input" accept=".pdf,.png,.jpg,.jpeg" hidden>
-        <div class="dz-icon">&#8615;</div>
-        <div class="dz-text">
-          <strong id="dz-filename">Drop a PDF or image here</strong>
-          <span>or click to browse &mdash; PDF, JPG, JPEG, PNG</span>
-        </div>
-      </label>
-      <div class="panel-footer">
-        <span class="hint" id="file-hint">No file selected</span>
-        <button type="submit" class="btn-primary" id="upload-btn" disabled>Examine posting</button>
-      </div>
-    </form>
-
-    <div class="pipeline">
-      <span>Text</span><i>&rarr;</i><span>OCR</span><i>&rarr;</i><span>NLP</span><i>&rarr;</i><span>TF&#8209;IDF</span><i>&rarr;</i><span>Fraud rules</span><i>&rarr;</i><span>Classifier</span>
-    </div>
-  </section>
-
-  <section class="result-panel" id="result-panel">
-
-    <div class="placeholder" id="placeholder">
-      <div class="stamp-outline">?</div>
-      <p>No case opened yet.<br>Submit a posting to see its verdict here.</p>
-    </div>
-
-    <div class="scanning" id="scanning" hidden>
-      <div class="scan-line"></div>
-      <p id="scanning-text">Reading document&hellip;</p>
-    </div>
-
-    <article class="report" id="report" hidden>
-
-      <div class="report-head">
-        <div>
-          <p class="eyebrow">Verdict</p>
-          <div class="verdict-row">
-            <span class="stamp" id="stamp">GENUINE</span>
-            <span class="risk-chip" id="risk-chip">LOW RISK</span>
-          </div>
-        </div>
-        <div class="score-dial" id="score-dial">
-          <svg viewBox="0 0 120 120" width="96" height="96">
-            <circle cx="60" cy="60" r="52" class="dial-track"></circle>
-            <circle cx="60" cy="60" r="52" class="dial-fill" id="dial-fill"></circle>
+  <!-- Header -->
+  <header class="navbar">
+    <div class="nav-container">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <path d="m9 12 2 2 4-4"/>
           </svg>
-          <div class="score-number">
-            <span id="score-value">0</span><small>%</small>
-          </div>
+        </div>
+        <div class="brand-info">
+          <span class="brand-title">SCAM SENTRY</span>
+          <span class="brand-tag">Intelligent Job Verifier</span>
         </div>
       </div>
+      
+      <div class="nav-badges">
+        <div class="system-status">
+          <span class="pulse-dot"></span>
+          <span>AI Engine Active</span>
+        </div>
+        <span class="badge-tag">Group 44 &bull; KDU Computing</span>
+      </div>
+    </div>
+  </header>
 
-      <p class="score-caption" id="score-caption">Confidence score</p>
+  <!-- Main Content -->
+  <main class="main-layout">
+    
+    <!-- Hero Header -->
+    <div class="hero-section">
+      <div class="hero-chip">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        Hybrid AI &bull; Machine Learning + Heuristic Fraud Analysis
+      </div>
+      <h1 class="hero-title">Protecting Job Seekers from Online Employment Scams</h1>
+      <p class="hero-desc">Paste an advertisement text or upload job flyers (PDF / Image) to scan for upfront fees, fake domains, unrealistic compensation, and fraudulent patterns.</p>
+    </div>
 
-      <div class="report-body">
-        <h2>Evidence &amp; Explanation</h2>
-        <p class="no-evidence" id="no-evidence" hidden></p>
-        <ol class="evidence-list" id="evidence-list"></ol>
+    <!-- App Grid -->
+    <div class="analyzer-grid">
 
-        <div class="tech-readout">
-          <div class="readout-item">
-            <span>Fraud-pattern score</span>
-            <strong id="rule-score-val">&mdash;</strong>
+      <!-- Left: Intake Card -->
+      <section class="card intake-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h2 class="card-title">Case Intake</h2>
+            <p class="card-subtitle">Select input method to analyze</p>
           </div>
-          <div class="readout-item">
-            <span>ML text-model score</span>
-            <strong id="ml-score-val">&mdash;</strong>
-          </div>
-          <div class="readout-item">
-            <span>Detected company</span>
-            <strong id="company-val">&mdash;</strong>
-          </div>
-          <div class="readout-item">
-            <span>Input source</span>
-            <strong id="source-val">&mdash;</strong>
+
+          <div class="tab-switcher" role="tablist">
+            <button type="button" class="tab-btn active" data-tab="paste" role="tab">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+              Paste Text
+            </button>
+            <button type="button" class="tab-btn" data-tab="upload" role="tab">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Upload Flyer
+            </button>
           </div>
         </div>
 
-        <details class="raw-text">
-          <summary>View extracted text</summary>
-          <pre id="extracted-preview"></pre>
-        </details>
-      </div>
+        <!-- Sample Loaders -->
+        <div class="sample-pills-bar">
+          <span class="sample-label">Quick Test Samples:</span>
+          <div class="sample-buttons">
+            <button type="button" class="sample-chip legit" id="load-sample-legit">
+              <span>&#10003;</span> Real Job Sample
+            </button>
+            <button type="button" class="sample-chip fake" id="load-sample-fake">
+              <span>&#9888;</span> Upfront Fee Scam
+            </button>
+            <button type="button" class="sample-chip warn" id="load-sample-whatsapp">
+              <span>&#9888;</span> WhatsApp / High Pay
+            </button>
+          </div>
+        </div>
 
-      <p class="disclaimer">This is an AI-assisted risk assessment, not a legal
-        determination. Always independently verify an employer before paying
-        any money or sharing personal documents.</p>
-    </article>
+        <!-- Tab 1: Paste Text Form -->
+        <form id="paste-form" class="tab-panel active" data-panel="paste">
+          <div class="textarea-container">
+            <textarea 
+              id="job-text" 
+              placeholder="Paste full job advertisement details here (job title, duties, company name, requirements, salary, contact emails, telegram or phone numbers)..." 
+              rows="10"
+            ></textarea>
+            <div class="input-actions-bar">
+              <button type="button" class="btn-ghost-sm" id="btn-clear-text">Clear</button>
+              <span class="char-counter" id="char-count">0 characters</span>
+            </div>
+          </div>
+          
+          <button type="submit" class="btn-primary" id="btn-analyze-text">
+            <span class="btn-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            </span>
+            <span>Examine Posting</span>
+          </button>
+        </form>
 
-    <div class="error-box" id="error-box" hidden></div>
+        <!-- Tab 2: Upload File Form -->
+        <form id="upload-form" class="tab-panel" data-panel="upload">
+          <label class="dropzone" id="dropzone" for="file-input">
+            <input type="file" id="file-input" accept=".pdf,.png,.jpg,.jpeg" hidden>
+            <div class="dz-glow"></div>
+            <div class="dz-icon-wrap">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            </div>
+            <div class="dz-content">
+              <strong id="dz-filename">Drop image or PDF flyer here</strong>
+              <span>Supports PNG, JPG, JPEG &bull; PDF documents with OCR</span>
+            </div>
+            <span class="dz-browse-badge">Browse File</span>
+          </label>
 
-  </section>
+          <div class="file-summary-bar">
+            <span class="file-status-text" id="file-hint">No file selected</span>
+            <button type="button" class="btn-ghost-sm" id="btn-clear-file" style="display: none;">Remove</button>
+          </div>
 
-</main>
+          <button type="submit" class="btn-primary" id="upload-btn" disabled>
+            <span class="btn-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            </span>
+            <span>Scan &amp; Examine File</span>
+          </button>
+        </form>
 
-<footer class="foot">
-  <div class="wrap">Intelligent Fake Job Advertisement Detection System &mdash; General Sir John Kotelawala Defence University, Faculty of Computing</div>
-</footer>
+        <!-- Pipeline Indicator -->
+        <div class="tech-pipeline">
+          <div class="pipe-step"><span>Input</span></div>
+          <div class="pipe-arrow">&rarr;</div>
+          <div class="pipe-step"><span>OCR Engine</span></div>
+          <div class="pipe-arrow">&rarr;</div>
+          <div class="pipe-step"><span>NLP Clean</span></div>
+          <div class="pipe-arrow">&rarr;</div>
+          <div class="pipe-step"><span>TF-IDF</span></div>
+          <div class="pipe-arrow">&rarr;</div>
+          <div class="pipe-step"><span>Rule Sweeper</span></div>
+          <div class="pipe-arrow">&rarr;</div>
+          <div class="pipe-step highlight"><span>Classifier</span></div>
+        </div>
 
-<script src="{{ url_for('static', filename='script.js') }}"></script>
+      </section>
+
+      <!-- Right: Results Card -->
+      <section class="card result-card" id="result-panel">
+        
+        <!-- Idle Placeholder -->
+        <div class="placeholder-state" id="placeholder">
+          <div class="placeholder-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <h3>Awaiting Advertisement</h3>
+          <p>Paste job content or upload a poster on the left, then click <strong>Examine Posting</strong> to see risk probability and detected indicators.</p>
+        </div>
+
+        <!-- Scanning Loader -->
+        <div class="scanning-state" id="scanning" hidden>
+          <div class="radar-spinner">
+            <div class="radar-ring"></div>
+            <div class="radar-dot"></div>
+          </div>
+          <h3 id="scanning-text">Analyzing document...</h3>
+          <p class="scanning-sub">Extracting features and scanning for known fraudulent signals</p>
+        </div>
+
+        <!-- Report Output -->
+        <article class="report-container" id="report" hidden>
+          
+          <!-- Verdict Banner -->
+          <div class="verdict-banner" id="verdict-banner">
+            <div class="verdict-main">
+              <span class="verdict-tag" id="verdict-tag">ASSESSMENT RESULT</span>
+              <div class="verdict-title-row">
+                <span class="stamp-badge" id="stamp">GENUINE</span>
+                <span class="risk-pill" id="risk-chip">LOW RISK</span>
+              </div>
+              <p class="score-sub-label" id="score-caption">Confidence this posting is genuine</p>
+            </div>
+
+            <!-- Score Dial Gauge -->
+            <div class="dial-container">
+              <svg viewBox="0 0 120 120" class="gauge-svg">
+                <circle cx="60" cy="60" r="50" class="gauge-bg"></circle>
+                <circle cx="60" cy="60" r="50" class="gauge-fill" id="dial-fill"></circle>
+              </svg>
+              <div class="gauge-content">
+                <span class="gauge-value" id="score-value">0</span>
+                <span class="gauge-unit">%</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Technical Metrics Grid -->
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <div class="metric-label">Fraud Rule Score</div>
+              <div class="metric-val" id="rule-score-val">&mdash;</div>
+              <div class="metric-meta">Indicator weight</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">ML Model Probability</div>
+              <div class="metric-val" id="ml-score-val">&mdash;</div>
+              <div class="metric-meta">GradientBoosting</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">Company Found</div>
+              <div class="metric-val truncate" id="company-val">&mdash;</div>
+              <div class="metric-meta">Entity extraction</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">Source Format</div>
+              <div class="metric-val" id="source-val">&mdash;</div>
+              <div class="metric-meta">Input processing</div>
+            </div>
+          </div>
+
+          <!-- Evidence List -->
+          <div class="evidence-section">
+            <div class="evidence-header">
+              <h3>Evidence &amp; Detected Red Flags</h3>
+              <span class="evidence-badge" id="evidence-count-badge">0 signals</span>
+            </div>
+            
+            <div class="no-evidence-box" id="no-evidence" hidden>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              <span>No fraud indicators detected in this advertisement.</span>
+            </div>
+
+            <div class="evidence-cards" id="evidence-list"></div>
+          </div>
+
+          <!-- Extracted Text Collapsible -->
+          <details class="text-collapsible">
+            <summary>
+              <span>View Extracted / Processed Text</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </summary>
+            <div class="extracted-box">
+              <pre id="extracted-preview"></pre>
+            </div>
+          </details>
+
+          <!-- Disclaimer Note -->
+          <div class="disclaimer-callout">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <p>This assessment is generated using AI heuristic rules and machine learning classification. Always verify employers directly before sharing sensitive financial information or depositing fees.</p>
+          </div>
+
+        </article>
+
+        <!-- Error Container -->
+        <div class="error-alert" id="error-box" hidden></div>
+
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-wrap">
+      <span>Scam Sentry &bull; Intelligent Fake Job Advertisement Detection System</span>
+      <span class="footer-sub">General Sir John Kotelawala Defence University &bull; Faculty of Computing</span>
+    </div>
+  </footer>
+
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>
