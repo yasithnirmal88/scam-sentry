@@ -14,6 +14,15 @@ import pytesseract
 import pdfplumber
 from PIL import Image
 
+import os
+import shutil
+
+# On Windows, locate tesseract executable if not in system PATH
+if not shutil.which("tesseract"):
+    default_win_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+    if os.path.exists(default_win_path):
+        pytesseract.pytesseract.tesseract_cmd = default_win_path
+
 try:
     from pdf2image import convert_from_bytes
     PDF2IMAGE_AVAILABLE = True
