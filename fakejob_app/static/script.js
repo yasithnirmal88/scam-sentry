@@ -333,3 +333,116 @@ function escapeHtml(str) {
 }
 
 // ------------------------------------------------------------------
+// 8. Cyber Security Constellation & Neural Network Background Animation
+// ------------------------------------------------------------------
+(function initCyberBackground() {
+  const canvas = document.getElementById("bg-canvas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+
+  let width = (canvas.width = window.innerWidth);
+  let height = (canvas.height = window.innerHeight);
+
+  window.addEventListener("resize", () => {
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+  });
+
+  // Mouse interaction
+  const mouse = { x: null, y: null, radius: 140 };
+  window.addEventListener("mousemove", (e) => {
+    mouse.x = e.clientX;
+    mouse.y = e.clientY;
+  });
+  window.addEventListener("mouseleave", () => {
+    mouse.x = null;
+    mouse.y = null;
+  });
+
+  const nodeCount = Math.min(55, Math.floor((width * height) / 24000));
+  const nodes = [];
+
+  const colors = [
+    { r: 6, g: 182, b: 212 },   // Cyan
+    { r: 99, g: 102, b: 241 },  // Indigo
+    { r: 59, g: 130, b: 246 },  // Blue
+    { r: 16, g: 185, b: 129 }   // Emerald
+  ];
+
+  for (let i = 0; i < nodeCount; i++) {
+    const col = colors[Math.floor(Math.random() * colors.length)];
+    nodes.push({
+      x: Math.random() * width,
+      y: Math.random() * height,
+      vx: (Math.random() - 0.5) * 0.7,
+      vy: (Math.random() - 0.5) * 0.7,
+      radius: Math.random() * 2 + 1.2,
+      color: col,
+      baseAlpha: Math.random() * 0.5 + 0.3,
+      pulse: Math.random() * Math.PI,
+    });
+  }
+
+  function animate() {
+    ctx.clearRect(0, 0, width, height);
+
+    // Update and draw nodes
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i];
+
+      node.x += node.vx;
+      node.y += node.vy;
+      node.pulse += 0.02;
+
+      // Bounce off screen edges
+      if (node.x < 0 || node.x > width) node.vx *= -1;
+      if (node.y < 0 || node.y > height) node.vy *= -1;
+
+      // Mouse gentle interaction
+      if (mouse.x !== null && mouse.y !== null) {
+        const dx = node.x - mouse.x;
+        const dy = node.y - mouse.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < mouse.radius) {
+          const force = (1 - dist / mouse.radius) * 1.5;
+          node.x += (dx / dist) * force;
+          node.y += (dy / dist) * force;
+        }
+      }
+
+      const alpha = node.baseAlpha + Math.sin(node.pulse) * 0.15;
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${node.color.r}, ${node.color.g}, ${node.color.b}, ${Math.max(0.1, alpha)})`;
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = `rgba(${node.color.r}, ${node.color.g}, ${node.color.b}, 0.5)`;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    // Connect close nodes with cyber laser lines
+    const maxDist = 135;
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const dx = nodes[i].x - nodes[j].x;
+        const dy = nodes[i].y - nodes[j].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < maxDist) {
+          const lineAlpha = (1 - dist / maxDist) * 0.22;
+          ctx.beginPath();
+          ctx.moveTo(nodes[i].x, nodes[i].y);
+          ctx.lineTo(nodes[j].x, nodes[j].y);
+          ctx.strokeStyle = `rgba(6, 182, 212, ${lineAlpha})`;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+      }
+    }
+
+    requestAnimationFrame(animate);
+  }
+
+  animate();
+})();
+
