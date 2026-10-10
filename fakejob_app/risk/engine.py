@@ -12,11 +12,31 @@ Rules (exact order):
   6. H5 alone -> Medium
   7. Only Low or none -> Low
 
-Language discipline enforced: summaries speak in risk levels and evidence,
-never "this is a scam" / "this is fake".
+Confidence reflects evidence strength, not the level:
+  High   -> multiple strong/direct indicators agree
+  Medium -> some indicators present but evidence is partial
+  Low    -> few indicators or weak/ambiguous evidence
+  (No indicators at all caps at Medium: absence of evidence is
+  reassuring but never proof.)
+
+Language discipline enforced (see risk/language.py): summaries speak in
+risk levels and evidence with room for legitimate explanations — never
+"This is a scam" / "This is fake" / "This is a ghost job".
 """
 
+from __future__ import annotations
+
+import logging
 from collections import Counter
+from typing import Any
+
+from risk.language import alternative_note
+
+logger = logging.getLogger("scam_sentry.risk_engine")
+
+# A snippet this long is treated as a direct quote of the offending text
+# rather than a vague or synthetic note.
+DIRECT_EVIDENCE_MIN_CHARS = 20
 
 
 def _counts(fired):
@@ -55,6 +75,27 @@ def determine_level(fired):
     return "Low"
 
 
+def has_critical(fired) -> bool:
+    """True when any Critical-severity indicator fired.
+
+    Used by callers (e.g. the hybrid score floor in app.classify) so the
+    score floor and the verdict logic stay aligned on the same evidence.
+    """
+    return any(d.get("severity") == "Critical" for d in (fired or []))
+
+
+def evidence_is_direct(indicator: dict | None) -> bool:
+    """True when the indicator carries a substantive quoted snippet."""
+    if not indicator:
+        return False
+    evidence = (indicator.get("evidence") or "").strip()
+    return len(evidence) >= DIRECT_EVIDENCE_MIN_CHARS
+
+
+def _strong_count(fired) -> int:
+    return sum(1 for d in (fired or []) if d.get("severity") in ("Critical", "High"))
+
+
 def assign_categories(fired, level):
     """Multi-label categories. Returns list of strings."""
     cats = set()
@@ -78,58 +119,77 @@ def assign_categories(fired, level):
 
 
 def assign_confidence(fired, level):
-    """High/Medium/Low confidence."""
-    n_crit = sum(1 for d in (fired or []) if d.get("severity") == "Critical")
-    n_high = sum(1 for d in (fired or []) if d.get("severity") == "High")
-    n_med = sum(1 for d in (fired or []) if d.get("severity") == "Medium")
-    total = len(fired or [])
+    """Confidence from evidence strength (see module docstring)."""
+    fired = fired or []
+    n_crit = sum(1 for d in fired if d.get("severity") == "Critical")
+    n_high = sum(1 for d in fired if d.get("severity") == "High")
+    n_med = sum(1 for d in fired if d.get("severity") == "Medium")
+    strong = n_crit + n_high
 
-    if level == "Critical":
-        return "High" if n_crit >= 1 and (n_high + n_med >= 1 or n_crit >= 2) else "Medium" if n_crit >= 1 else "Low"
-    if level == "High":
-        return "High" if n_high >= 2 else "Medium"
-    if level == "Medium":
-        if n_high >= 1 or n_med >= 2:
-            return "Medium"
-        return "Low"
-    # Low
-    if total == 0:
-        return "Medium"  # confident there is nothing alarming
+    # High: multiple strong/direct indicators agree.
+    if strong >= 2:
+        return "High"
+    if n_crit == 1 and any(evidence_is_direct(d) for d in fired
+                           if d.get("severity") == "Critical"):
+        return "High"
+    if not fired:
+        return "Medium"  # reassuring, but absence of evidence is not proof
+    # Medium: some indicators present but evidence is partial.
+    if strong == 1 or n_med >= 2:
+        return "Medium"
+    # Low: few indicators or weak/ambiguous evidence only.
     return "Low"
 
 
 def build_summary(level, fired):
-    """Careful 1-2 sentence summary with language discipline."""
+    """Careful 1-3 sentence summary with strict language discipline."""
+    fired = fired or []
     if not fired:
-        return ("This posting shows no major fraud or ghost indicators. "
-                "It reads consistently with a genuine listing, but standard verification is still advised.")
+        return ("This posting shows patterns consistent with genuine listings — "
+                "no major fraud or ghost indicators were found. "
+                "Standard verification is still advised, as no screening is perfect.")
     top = fired[0]
     n = len(fired)
+    alt = alternative_note(top)
+    others = (" In total, %d indicators were found." % n) if n > 1 else ""
     if level == "Critical":
-        return ("This posting shows patterns consistent with high-risk scams "
-                "(%s: %s). Treat it as critical risk and do not send money or sensitive data."
-                % (top["id"], top["name"]))
+        return ("High risk of a scam: this posting shows patterns consistent with "
+                "high-risk fraud (%s: %s).%s "
+                "Treat it as critical risk — do not send money or sensitive data; "
+                "note that %s."
+                % (top["id"], top["name"], others, alt))
     if level == "High":
-        return ("Multiple strong warning signs were found (%d indicators, strongest: %s). "
-                "This posting carries high risk and needs careful verification before engaging."
-                % (n, top["name"]))
+        return ("Multiple strong indicators suggest elevated risk "
+                "(strongest: %s).%s "
+                "Verify the employer carefully before engaging; %s."
+                % (top["name"], others, alt))
     if level == "Medium":
-        return ("Some suspicious characteristics were found (%s%s). "
-                "Proceed with caution and verify the employer before sharing personal details."
-                % (top["name"], (" plus %d more" % (n - 1)) if n > 1 else ""))
-    return ("Only weak or isolated signals were found%s. "
-            "Risk appears low, but light verification is still sensible."
-            % ((" (%s)" % top["name"]) if fired else ""))
+        return ("This posting shows some patterns consistent with suspicious listings "
+                "(%s). "
+                "Proceed with caution and verify the employer before sharing personal "
+                "details; %s."
+                % (top["name"], alt))
+    return ("This posting shows only weak or isolated signals (%s), which suggests "
+            "low risk. "
+            "A light verification pass is still sensible; %s."
+            % (top["name"], alt))
 
 
 def assess_risk(fired):
-    """Full risk assessment from fired indicators."""
+    """Full risk assessment from fired indicators, plus safety-net checks."""
+    from risk.consistency import verify_assessment  # deferred: avoids import cycle
+
     fired = fired or []
     level = determine_level(fired)
-    return {
+    assessment: dict[str, Any] = {
         "overall_risk_level": level,
         "risk_categories": assign_categories(fired, level),
         "confidence": assign_confidence(fired, level),
         "summary": build_summary(level, fired),
         "key_indicators": fired,
     }
+    assessment, corrections = verify_assessment(fired, assessment)
+    assessment["corrections"] = corrections
+    if corrections:
+        logger.warning("Risk consistency checks applied: %s", corrections)
+    return assessment
