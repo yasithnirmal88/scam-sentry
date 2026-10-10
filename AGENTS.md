@@ -11,7 +11,8 @@ Repo for the Scam Sentry job-scam risk analyzer. Application code lives in
   `risk/llm_enhancer.py` is an optional, disabled-by-default layer that only
   rewrites wording; it never changes the risk level.
 - `fakejob_app/scanner/` — public job-board sources (registry + BaseScanner).
-- `fakejob_app/models/job.py` — SQLite storage (`jobs`, `scan_history`).
+- `fakejob_app/models/` — storage: `job.py` is the public facade (backend
+  agnostic); `storage.py` holds the SQLite + Postgres backends.
 - `fakejob_app/services/` — scan orchestration + scheduler.
 - `fakejob_app/app.py` — Flask app / API.
 - `fakejob_app/artifacts/` — committed pickled ML model (classifier/tfidf/meta).
@@ -32,8 +33,10 @@ python scan.py --list-sources         # CLI scanner
   to engine output on any failure.
 - Language discipline: never emit "this is a scam/fake" — `risk/language.py`
   enforces this and LLM output is filtered through it.
-- SQLite access goes through `models/job.py::_connect` (a context manager that
-  closes the connection — the raw `sqlite3` context manager does not).
+- Storage goes through `models/job.py` (public API), which picks a backend in
+  `models/storage.py`: an explicit `db_path` wins, then `DATABASE_URL`
+  (Postgres), then the local SQLite file. Never open a raw connection for app
+  reads/writes.
 - `normalize_url` only accepts http(s); other schemes return "".
 - Env-var config lives in `config.py`; keep new settings off by default.
 
