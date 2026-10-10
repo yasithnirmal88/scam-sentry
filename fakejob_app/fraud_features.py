@@ -338,11 +338,31 @@ def detect_generic_description(text):
     }
 
 
+# When a labeled value runs into the next field ("Company: Initech LLC.
+# Location: Remote"), the header regex over-captures. A sentence boundary
+# followed by a known field label almost never belongs to a company name,
+# so the value is cut there.
+_HEADER_SPILLOVER_RE = re.compile(
+    r"\.\s+(Location|Salary|Email|E-?mail|Phone|Contact|Requirements?|"
+    r"Responsibilities|Benefits|Apply|Website|Description|Overview|About)\b",
+    re.IGNORECASE,
+)
+
+
+def _trim_header_value(value):
+    m = _HEADER_SPILLOVER_RE.search(value or "")
+    if m:
+        value = value[:m.start() + 1]
+    return (value or "").strip()
+
+
 def extract_company_name(text):
+    if not text:
+        return None
     for p in COMPANY_HEADER_PATTERNS:
         m = re.search(p, text, re.IGNORECASE)
         if m:
-            return m.group(1).strip()
+            return _trim_header_value(m.group(1))
 
     m = AT_COMPANY_PATTERN.search(text)
     if m:

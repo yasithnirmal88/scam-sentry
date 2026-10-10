@@ -1,7 +1,5 @@
 """App-level alignment: new Critical evidence forces the hybrid floor too."""
 
-import config
-
 
 def test_new_critical_forces_score_floor():
     import app as app_module

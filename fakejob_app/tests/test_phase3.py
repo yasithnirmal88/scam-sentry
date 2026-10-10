@@ -6,7 +6,7 @@ import config
 from models.job import get_last_scan, init_db, record_scan_run
 from scanner import get_scanner, list_sources
 from scanner.arbeitnow import ArbeitnowScanner
-from scanner.base import clean_html, http_get, normalize_url
+from scanner.base import http_get, normalize_url
 from scanner.jobicy import JobicyScanner
 
 

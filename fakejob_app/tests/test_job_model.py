@@ -1,6 +1,5 @@
 """Tests for the SQLite jobs store."""
 
-import models.job as job_model
 from models.job import JobRecord, count_jobs, get_job, init_db, list_jobs, risk_counts, save_job
 
 
