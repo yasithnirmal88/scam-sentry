@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scam Sentry &mdash; Job Risk Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+  <!-- Background Ambience -->
+  <canvas id="bg-canvas" class="bg-canvas"></canvas>
+  <div class="ambient-glow glow-top"></div>
+  <div class="ambient-glow glow-bottom"></div>
+  <div class="grid-overlay"></div>
+
+  <!-- Header -->
+  <header class="navbar">
+    <div class="nav-container">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <path d="m9 12 2 2 4-4"/>
+          </svg>
+        </div>
+        <div class="brand-info">
+          <span class="brand-title">SCAM SENTRY</span>
+          <span class="brand-tag">Job Risk Dashboard</span>
+        </div>
+      </div>
+
+      <div class="nav-badges">
+        <a class="btn-ghost-sm nav-link" href="{{ url_for('index') }}">Single-Job Analyzer</a>
+        <div class="system-status">
+          <span class="pulse-dot"></span>
+          <span>AI Engine Active</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main-layout">
+
+    <div class="hero-section">
+      <div class="hero-chip">Live Scan &bull; {{ sources | join(" + ") }} &bull; Risk Engine Evaluated</div>
+      <h1 class="hero-title">Scanned Jobs by Risk Level</h1>
+      <p class="hero-desc">Every listing below was automatically evaluated by the Scam Sentry Risk Engine. Click any job for the full evidence report.</p>
+    </div>
+
+    <!-- Scan status strip -->
+    <div class="metrics-grid dash-status">
+      <div class="metric-card"><div class="metric-label">Total Jobs Stored</div><div class="metric-val" id="total-jobs">{{ total }}</div><div class="metric-meta">across all sources</div></div>
+      <div class="metric-card"><div class="metric-label">Last Scan</div><div class="metric-val truncate" id="last-scan-time">{{ (last_scan.finished_at[:16] if last_scan and last_scan.finished_at else "Never") | replace("T", " ") }}</div><div class="metric-meta" id="last-scan-detail">{% if last_scan %}{{ last_scan.stored }} stored &bull; {{ last_scan.fetched }} fetched{% else %}no scan recorded yet{% endif %}</div></div>
+      <div class="metric-card"><div class="metric-label">Last Scan Status</div><div class="metric-val" id="last-scan-status">{% if last_scan %}{{ last_scan.status }}{% else %}—{% endif %}</div><div class="metric-meta">success / partial / failed</div></div>
+    </div>
+
+    <!-- First-run welcome (shown only when the database is empty) -->
+    {% if total == 0 %}
+    <section class="card welcome-banner" id="welcome-banner">
+      <h2>👋 Welcome to the Job Risk Scanner</h2>
+      <p>No jobs have been scanned yet. Run your first scan to pull live listings from public job boards — every posting is automatically evaluated by the Risk Engine and grouped below by risk level.</p>
+      <div class="welcome-steps">
+        <span>1 &bull; Pick sources</span>
+        <span>2 &bull; Run scan</span>
+        <span>3 &bull; Review by risk level</span>
+      </div>
+      <button type="button" class="btn-primary" id="btn-first-scan">
+        <span>Run Your First Scan</span>
+      </button>
+    </section>
+    {% endif %}
+
+    <!-- Risk counts -->
+    <div class="metrics-grid dash-counts">
+      <div class="metric-card dash-count" data-level="Critical"><div class="metric-label">🚨 Critical</div><div class="metric-val" id="count-critical">{{ counts.get('Critical', 0) }}</div><div class="metric-meta">immediate danger signals</div></div>
+      <div class="metric-card dash-count" data-level="High"><div class="metric-label">🔴 High</div><div class="metric-val" id="count-high">{{ counts.get('High', 0) }}</div><div class="metric-meta">multiple strong warnings</div></div>
+      <div class="metric-card dash-count" data-level="Medium"><div class="metric-label">🟡 Medium</div><div class="metric-val" id="count-medium">{{ counts.get('Medium', 0) }}</div><div class="metric-meta">proceed with caution</div></div>
+      <div class="metric-card dash-count" data-level="Low"><div class="metric-label">🟢 Low</div><div class="metric-val" id="count-low">{{ counts.get('Low', 0) }}</div><div class="metric-meta">no major indicators</div></div>
+    </div>
+
+    <!-- Controls -->
+    <section class="card dash-controls">
+      <div class="dash-filters">
+        <div class="tab-switcher" role="tablist" id="risk-tabs">
+          <button type="button" class="tab-btn active" data-risk="">All</button>
+          <button type="button" class="tab-btn" data-risk="Critical">🚨 Critical</button>
+          <button type="button" class="tab-btn" data-risk="High">🔴 High</button>
+          <button type="button" class="tab-btn" data-risk="Medium">🟡 Medium</button>
+          <button type="button" class="tab-btn" data-risk="Low">🟢 Low</button>
+        </div>
+        <div class="dash-filter-row">
+          <select id="filter-source" class="dash-select" aria-label="Filter by source">
+            <option value="">All sources</option>
+            {% for s in sources %}
+            <option value="{{ s }}">{{ s }}</option>
+            {% endfor %}
+          </select>
+          <input id="filter-q" class="dash-search" type="search" placeholder="Search title or company…" aria-label="Search jobs">
+        </div>
+      </div>
+      <div class="dash-scan">
+        <div class="dash-scan-sources" id="scan-sources">
+          {% for s in sources %}
+          <label class="scan-check"><input type="checkbox" value="{{ s }}" checked> {{ s }}</label>
+          {% endfor %}
+        </div>
+        <button type="button" class="btn-primary" id="btn-scan">
+          <span class="btn-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </span>
+          <span id="btn-scan-label">Run New Scan</span>
+        </button>
+        <span class="file-status-text" id="scan-status">Idle — last scan results shown below.</span>
+      </div>
+    </section>
+
+    <!-- Grouped job sections -->
+    <div id="job-groups">
+      {% for level in ["Critical", "High", "Medium", "Low"] %}
+      <section class="card dash-group" data-group="{{ level }}">
+        <div class="evidence-header">
+          <h3>{{ {"Critical": "🚨 Critical", "High": "🔴 High", "Medium": "🟡 Medium", "Low": "🟢 Low"}[level] }}</h3>
+          <span class="evidence-badge group-count">0</span>
+        </div>
+        <div class="job-cards"></div>
+      </section>
+      {% endfor %}
+    </div>
+
+    <div class="error-alert" id="dash-error" hidden></div>
+
+  </main>
+
+  <footer class="footer">
+    <div class="footer-wrap">
+      <span>Scam Sentry &bull; Job Risk Scanner</span>
+      <span class="footer-sub">Risk levels are evidence-based assessments, never absolute verdicts.</span>
+    </div>
+  </footer>
+
+  <script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+</body>
+</html>
