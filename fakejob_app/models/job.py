@@ -12,9 +12,10 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 import config
 
@@ -62,11 +63,28 @@ CREATE TABLE IF NOT EXISTS scan_history (
 """
 
 
-def _connect(db_path: Optional[str] = None) -> sqlite3.Connection:
+@contextmanager
+def _connect(db_path: Optional[str] = None) -> Iterator[sqlite3.Connection]:
+    """Yield a connection and always close it.
+
+    sqlite3.Connection's own context manager commits/rolls back but does
+    *not* close the file handle, which leaks a connection (and an open fd)
+    on every call. This wrapper guarantees closure.
+
+    Note: unlike the raw sqlite3 connection context manager, this wrapper
+    does NOT commit. Every write path must call ``conn.commit()`` explicitly
+    before the connection is closed on exit.
+    """
     path = db_path or config.DATABASE_PATH
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        yield conn
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def init_db(db_path: Optional[str] = None) -> str:

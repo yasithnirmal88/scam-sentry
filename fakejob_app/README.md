@@ -53,6 +53,9 @@ next steps.
   source is one subclass.
 - **Storage** (`models/job.py`): SQLite; jobs upserted by normalized URL,
   every scan recorded in `scan_history` with success/partial/failed status.
+  **Deploy note:** on Render's free tier the disk is ephemeral — this SQLite
+  file (and all scan history) is wiped on every deploy or restart. Treat it as
+  a cache, not durable storage.
 - **Scheduler** (`services/scheduler.py`): dependency-free background thread,
   every N hours; manual scans also run async so the web app never blocks.
 
@@ -190,7 +193,7 @@ No LinkedIn scraping, by design.
 | `/api/scan` | POST `{"sources": [...], "limit": N}` | Async scan → `202`; `?sync=1` to wait |
 | `/api/scan/status` | GET | Running/idle + last recorded run |
 | `/api/sources` | GET | Registered scanner names |
-| `/api/health` | GET | `{"status": "ok", "model_loaded": true}` |
+| `/api/health` | GET | `{"status": "ok", "model_loaded": false}` — `model_loaded` flips to `true` after the first `/api/analyze` (the ML model loads lazily) |
 
 ## Environment variables
 
@@ -233,7 +236,7 @@ fakejob_app/
 ├── models/job.py         # SQLite jobs + scan_history
 ├── templates/            # index, dashboard, job_detail
 ├── static/               # style.css, script.js, dashboard.js
-├── tests/                # pytest suite (51+ tests)
+├── tests/                # pytest suite (140+ tests)
 ├── Dockerfile / .env.example / requirements.txt
 └── artifacts/            # trained model artifacts (auto-generated)
 ```
