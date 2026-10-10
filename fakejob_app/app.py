@@ -30,6 +30,7 @@ Pipeline (matches the project proposal's workflow diagram):
 import logging
 import os
 import pickle
+import threading
 
 import numpy as np
 from flask import Flask, request, jsonify, render_template
@@ -76,6 +77,7 @@ def _file_too_large(_exc):
 
 _clf = None
 _tfidf = None
+_model_lock = threading.Lock()
 
 
 def load_or_train_model():
@@ -95,6 +97,20 @@ def load_or_train_model():
     with open(tfidf_path, "rb") as f:
         _tfidf = pickle.load(f)
     logger.info("Model loaded.")
+
+
+def _ensure_model():
+    """Load the ML model on first use (thread-safe, one-time).
+
+    Keeping import cheap matters on Render's free tier: the scanner and
+    dashboard never touch the ML model, so deferring the load speeds up
+    boot and avoids the ML memory cost unless a single-job analysis runs.
+    """
+    if _clf is not None and _tfidf is not None:
+        return
+    with _model_lock:
+        if _clf is None or _tfidf is None:
+            load_or_train_model()
 
 
 def vectorize(text):
@@ -125,6 +141,7 @@ def classify(text, posted_at=None, use_llm=None):
                       "longer job advertisement or upload a clearer file."
         }
 
+    _ensure_model()
     X, rule_result = vectorize(text)
     ml_proba_fake = float(_clf.predict_proba(X)[0][1]) * 100  # 0-100
 
@@ -298,7 +315,6 @@ def analyze_file():
 def health():
     return jsonify({"status": "ok", "model_loaded": _clf is not None})
 
-
 # ---------------------------------------------------------------------------
 # Job Risk Scanner API (Phase 1)
 # ---------------------------------------------------------------------------
@@ -430,7 +446,8 @@ def dashboard_job_detail(job_id):
     return render_template("job_detail.html", job=job, error=None)
 
 
-load_or_train_model()
+# Model loading is deferred to the first analysis request (_ensure_model) so
+# that boot, scanner, and dashboard stay fast and light on Render's free tier.
 
 try:
     init_db()
