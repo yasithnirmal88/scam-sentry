@@ -1,7 +1,7 @@
 """
 risk/indicators.py
 ------------------
-Severity-graded risk indicators C1-C4, H1-H5, M1-M4, L1-L3.
+Severity-graded risk indicators C1-C4, H1-H5, M1-M5, L1-L3.
 
 Each detector is a pure function: (text, metadata) -> (triggered, evidence).
 `analyze_indicators` runs all detectors and returns fired indicator dicts:

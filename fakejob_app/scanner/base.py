@@ -56,19 +56,31 @@ def http_get(url: str, params: dict | None = None,
     raise last_exc
 
 
+_ALLOWED_SCHEMES = {"http", "https"}
+
+
 def normalize_url(url: str | None) -> str:
-    """Canonicalize a posting URL so re-scans dedupe reliably."""
+    """Canonicalize a posting URL so re-scans dedupe reliably.
+
+    Only http(s) URLs are accepted; anything else (javascript:, data:, ...)
+    returns "" so it is dropped rather than rendered as a link.
+    """
     if not url:
         return ""
+    raw = url.strip()
     try:
-        parts = urlparse(url.strip())
+        parts = urlparse(raw)
     except Exception:
-        return (url or "").strip()
-    scheme = (parts.scheme or "https").lower()
+        return ""
+    scheme = (parts.scheme or "").lower()
+    if scheme and scheme not in _ALLOWED_SCHEMES:
+        return ""
+    if not scheme:
+        if not parts.netloc:
+            return ""
+        scheme = "https"
     host = (parts.netloc or "").lower()
     path = parts.path.rstrip("/") or "/"
-    if path != "/":
-        path = parts.path.rstrip("/")
     query = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)
              if k.lower() not in _TRACKING_PARAMS]
     return urlunparse((scheme, host, path, "", urlencode(query), ""))
