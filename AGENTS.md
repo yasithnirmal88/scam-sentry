@@ -37,6 +37,10 @@ python scan.py --list-sources         # CLI scanner
   `models/storage.py`: an explicit `db_path` wins, then `DATABASE_URL`
   (Postgres), then the local SQLite file. Never open a raw connection for app
   reads/writes.
+- API abuse control: `POST /api/scan` requires an `X-Scan-Token` header equal
+  to `SCAN_API_TOKEN` (empty token = endpoint rejects everyone); the analysis
+  and scan endpoints are rate-limited per IP; with `LLM_ENABLED=true` the app
+  refuses to start unless the token and rate limits are configured.
 - `normalize_url` only accepts http(s); other schemes return "".
 - Env-var config lives in `config.py`; keep new settings off by default.
 

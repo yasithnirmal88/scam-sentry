@@ -218,9 +218,11 @@ def test_trigger_rejected_while_running(sched_env, monkeypatch):
 @pytest.fixture()
 def scan_api(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DATABASE_PATH", str(tmp_path / "scan3.db"))
+    monkeypatch.setattr(config, "SCAN_API_TOKEN", "test-token")
     init_db(config.DATABASE_PATH)
     import app as app_module
     app_module.app.config["TESTING"] = True
+    app_module.limiter.enabled = False
     with app_module.app.test_client() as client:
         yield client
 
@@ -229,7 +231,8 @@ def test_post_scan_async_202(scan_api, monkeypatch):
     import services.scheduler as sched
     monkeypatch.setattr(sched, "trigger_async",
                         lambda **k: {"accepted": True, "status": "running"})
-    res = scan_api.post("/api/scan", json={"sources": ["remotive"], "limit": 5})
+    res = scan_api.post("/api/scan", json={"sources": ["remotive"], "limit": 5},
+                        headers={"X-Scan-Token": "test-token"})
     assert res.status_code == 202
     assert res.get_json()["status"] == "running"
 
@@ -238,7 +241,8 @@ def test_post_scan_409_when_busy(scan_api, monkeypatch):
     import services.scheduler as sched
     monkeypatch.setattr(sched, "trigger_async",
                         lambda **k: {"accepted": False, "reason": "busy", "status": "running"})
-    assert scan_api.post("/api/scan", json={}).status_code == 409
+    res = scan_api.post("/api/scan", json={}, headers={"X-Scan-Token": "test-token"})
+    assert res.status_code == 409
 
 
 def test_scan_status_endpoint(scan_api, monkeypatch):

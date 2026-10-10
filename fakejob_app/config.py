@@ -74,6 +74,19 @@ FRESHNESS_STALE_DAYS = int(os.getenv("FRESHNESS_STALE_DAYS", "60"))
 FRESHNESS_VERY_STALE_DAYS = int(os.getenv("FRESHNESS_VERY_STALE_DAYS", "90"))
 
 # ---------------------------------------------------------------------------
+# Abuse & cost control (Phase 3). Always on; tune via env.
+# ---------------------------------------------------------------------------
+# Shared secret that must be sent as the `X-Scan-Token` header to trigger a
+# scan (POST /api/scan). Empty = the endpoint rejects every request (safe
+# default). Production must set a long random value.
+SCAN_API_TOKEN = os.getenv("SCAN_API_TOKEN", "").strip()
+# Per-IP allowed request rate on the analysis endpoints and on the scan-trigger
+# endpoint. Flask-Limiter parses these (e.g. "30/minute"). The app refuses to
+# boot the LLM layer unless both are set.
+RATE_LIMIT_ANALYZE = os.getenv("RATE_LIMIT_ANALYZE", "30/minute").strip()
+RATE_LIMIT_SCAN = os.getenv("RATE_LIMIT_SCAN", "5/minute").strip()
+
+# ---------------------------------------------------------------------------
 # Optional LLM enhancement layer (OpenAI-compatible chat/completions).
 # Disabled by default. The deterministic Risk Engine stays the source of
 # truth for the risk level; the LLM only rewrites the human-facing summary
