@@ -45,6 +45,8 @@ from risk.indicators import analyze_indicators
 from risk.engine import assess_risk
 from risk.verification import verify_employer
 from risk.actions import generate_actions
+from models.job import count_jobs, get_job, init_db, list_jobs, risk_counts
+from scanner import list_sources
 
 APP_DIR = config.APP_DIR
 ALLOWED_EXTENSIONS = config.ALLOWED_EXTENSIONS
@@ -235,7 +237,79 @@ def health():
     return jsonify({"status": "ok", "model_loaded": _clf is not None})
 
 
+# ---------------------------------------------------------------------------
+# Job Risk Scanner API (Phase 1)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/jobs", methods=["GET"])
+def api_list_jobs():
+    """List scanned jobs. Query params: risk_level, source, q, limit, offset."""
+    try:
+        jobs = list_jobs(
+            risk_level=request.args.get("risk_level"),
+            source=request.args.get("source"),
+            query=request.args.get("q"),
+            limit=request.args.get("limit", 50),
+            offset=request.args.get("offset", 0),
+        )
+        return jsonify({
+            "jobs": jobs,
+            "total": count_jobs(),
+            "counts": risk_counts(),
+        })
+    except Exception as exc:
+        logger.exception("Failed to list jobs")
+        return jsonify({"error": f"Could not list jobs: {exc}"}), 500
+
+
+@app.route("/api/jobs/<int:job_id>", methods=["GET"])
+def api_get_job(job_id):
+    """Full details of one job, including its stored risk report."""
+    try:
+        job = get_job(job_id)
+    except Exception as exc:
+        logger.exception("Failed to fetch job %s", job_id)
+        return jsonify({"error": f"Could not fetch job: {exc}"}), 500
+    if not job:
+        return jsonify({"error": "Job not found."}), 404
+    return jsonify(job)
+
+
+@app.route("/api/scan", methods=["POST"])
+def api_trigger_scan():
+    """Trigger a scan manually. Body (JSON, optional): {sources: [...], limit: N}."""
+    from services.scanner_service import run_scan
+
+    data = request.get_json(silent=True) or {}
+    sources = data.get("sources") or list_sources()
+    limit = data.get("limit", config.SCANNER_DEFAULT_LIMIT)
+    try:
+        limit = max(1, min(int(limit), 100))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Invalid 'limit' (1-100)."}), 400
+    unknown = [s for s in sources if s not in list_sources()]
+    if unknown:
+        return jsonify({"error": f"Unknown sources: {unknown}. Available: {list_sources()}"}), 400
+    try:
+        summary = run_scan(sources=sources, limit_per_source=limit)
+    except Exception as exc:
+        logger.exception("Scan failed")
+        return jsonify({"error": f"Scan failed: {exc}"}), 500
+    summary["counts"] = risk_counts()
+    return jsonify(summary)
+
+
+@app.route("/api/sources", methods=["GET"])
+def api_list_sources():
+    return jsonify({"sources": list_sources()})
+
+
 load_or_train_model()
+
+try:
+    init_db()
+except Exception as exc:
+    logger.warning("Could not initialise job database: %s", exc)
 
 if __name__ == "__main__":
     app.run(host=config.FLASK_HOST, port=config.FLASK_PORT, debug=config.FLASK_DEBUG)
