@@ -238,19 +238,49 @@
             </div>
           </div>
 
+          <!-- Risk Assessment Summary -->
+          <div class="evidence-section" id="risk-assessment-section">
+            <div class="evidence-header">
+              <h3>Risk Assessment</h3>
+              <span class="evidence-badge" id="confidence-badge">—</span>
+            </div>
+            <div class="no-evidence-box" id="risk-summary-box">
+              <span id="risk-summary">Awaiting analysis.</span>
+            </div>
+            <div class="sample-buttons" id="risk-categories" style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;"></div>
+          </div>
+
           <!-- Evidence List -->
           <div class="evidence-section">
             <div class="evidence-header">
-              <h3>Evidence &amp; Detected Red Flags</h3>
+              <h3>Evidence &amp; Key Indicators</h3>
               <span class="evidence-badge" id="evidence-count-badge">0 signals</span>
             </div>
-            
+
             <div class="no-evidence-box" id="no-evidence" hidden>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
               <span>No fraud indicators detected in this advertisement.</span>
             </div>
 
             <div class="evidence-cards" id="evidence-list"></div>
+          </div>
+
+          <!-- Employer Verification -->
+          <div class="evidence-section" id="verification-section">
+            <div class="evidence-header">
+              <h3>Employer Verification</h3>
+            </div>
+            <div class="no-evidence-box" id="verification-box">
+              <span id="verification-text">Not checked yet.</span>
+            </div>
+          </div>
+
+          <!-- Recommended Actions -->
+          <div class="evidence-section" id="actions-section">
+            <div class="evidence-header">
+              <h3>Recommended Actions</h3>
+            </div>
+            <div class="evidence-cards" id="actions-list"></div>
           </div>
 
           <!-- Extracted Text Collapsible -->

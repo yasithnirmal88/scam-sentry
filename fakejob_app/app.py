@@ -27,6 +27,7 @@ Pipeline (matches the project proposal's workflow diagram):
         Explanation Engine (evidence-based, not raw SHAP words)
 """
 
+import logging
 import os
 import pickle
 
@@ -34,15 +35,25 @@ import numpy as np
 from flask import Flask, request, jsonify, render_template
 from scipy.sparse import hstack, csr_matrix
 
+import config
 import fraud_features
 from fraud_features import extract_all_features, FEATURE_KEYS
 from text_processing import preprocess
 from ocr_utils import extract_text
-from model_training import build_synthetic_dataset, train, MODEL_DIR
+from model_training import build_synthetic_dataset, train
+from risk.indicators import analyze_indicators
+from risk.engine import assess_risk
+from risk.verification import verify_employer
+from risk.actions import generate_actions
 
-APP_DIR = os.path.dirname(__file__)
-ALLOWED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg"}
-MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB
+APP_DIR = config.APP_DIR
+ALLOWED_EXTENSIONS = config.ALLOWED_EXTENSIONS
+MAX_CONTENT_LENGTH = config.MAX_CONTENT_LENGTH
+MODEL_DIR = config.MODEL_DIR
+
+logging.basicConfig(level=getattr(logging, config.LOG_LEVEL, logging.INFO),
+                    format=config.LOG_FORMAT)
+logger = logging.getLogger("scam_sentry")
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
@@ -58,16 +69,16 @@ def load_or_train_model():
     tfidf_path = os.path.join(MODEL_DIR, "tfidf.pkl")
 
     if not (os.path.exists(clf_path) and os.path.exists(tfidf_path)):
-        print("No trained model found - training on a fresh synthetic dataset "
-              "(first run only, takes a few seconds)...")
-        df = build_synthetic_dataset(n_per_class=450)
+        logger.info("No trained model found - training on a fresh synthetic dataset "
+                    "(first run only, takes a few seconds)...")
+        df = build_synthetic_dataset(n_per_class=config.SYNTHETIC_SAMPLES_PER_CLASS)
         train(df)
 
     with open(clf_path, "rb") as f:
         _clf = pickle.load(f)
     with open(tfidf_path, "rb") as f:
         _tfidf = pickle.load(f)
-    print("Model loaded.")
+    logger.info("Model loaded.")
 
 
 def vectorize(text):
@@ -82,7 +93,7 @@ def vectorize(text):
 
 
 def classify(text):
-    if not text or len(text.strip()) < 15:
+    if not text or len(text.strip()) < config.MIN_TEXT_LENGTH:
         return {
             "error": "Not enough text was found to analyse. Please paste a "
                       "longer job advertisement or upload a clearer file."
@@ -97,7 +108,7 @@ def classify(text):
     # slightly higher than the ML model, since the ML model is trained on
     # a limited dataset while the rule engine encodes well-established
     # fraud indicators directly.
-    final_score = round(0.55 * rule_score + 0.45 * ml_proba_fake, 1)
+    final_score = round(config.RULE_WEIGHT * rule_score + config.ML_WEIGHT * ml_proba_fake, 1)
 
     # A request for payment or for sensitive personal information (bank
     # details, national ID, passport number, etc.) is, on its own, a
@@ -111,12 +122,12 @@ def classify(text):
     elif rule_result.get("strong_hit"):
         final_score = max(final_score, fraud_features.STRONG_SCORE_FLOOR)
 
-    prediction = "Fake" if final_score >= 50 else "Genuine"
+    prediction = "Fake" if final_score >= config.FAKE_THRESHOLD else "Genuine"
     confidence = final_score if prediction == "Fake" else round(100 - final_score, 1)
 
-    if final_score >= 65:
+    if final_score >= config.HIGH_RISK_THRESHOLD:
         risk_level = "HIGH"
-    elif final_score >= 35:
+    elif final_score >= config.MEDIUM_RISK_THRESHOLD:
         risk_level = "MEDIUM"
     else:
         risk_level = "LOW"
@@ -137,13 +148,39 @@ def classify(text):
     else:
         indicators_message = None
 
+    # ---- v1.0 Risk Assessment (primary, per Architecture Upgrade Spec) ----
+    # Indicator-driven verdict; hybrid score is a supporting signal only.
+    # Critical score-floor: any Critical indicator forces Critical level
+    # regardless of ML score (enforced inside assess_risk determination rules).
+    fired = analyze_indicators(text)
+    assessment = assess_risk(fired)
+    verification = verify_employer(text, fired)
+    actions = generate_actions(fired, assessment["overall_risk_level"])
+
+    hybrid_01 = round(final_score / 100.0, 3)
+    rule_01 = round(rule_score / 100.0, 3)
+    ml_01 = round(ml_proba_fake / 100.0, 3)
+
     return {
+        # New structured response (primary).
+        "overall_risk_level": assessment["overall_risk_level"],
+        "risk_categories": assessment["risk_categories"],
+        "confidence": assessment["confidence"],
+        "summary": assessment["summary"],
+        "key_indicators": assessment["key_indicators"],
+        "employer_verification": verification,
+        "recommended_actions": actions,
+        "hybrid_score": hybrid_01,
+        "rule_score": rule_01,
+        "ml_score": ml_01,
+        "raw_text_preview": text[:800],
+        # Backward-compatible fields.
         "prediction": prediction,
         "confidence_score": confidence,
         "fake_probability": final_score,
         "risk_level": risk_level,
         "ml_probability": round(ml_proba_fake, 1),
-        "rule_score": rule_score,
+        "rule_score_100": rule_score,
         "indicators": indicators,
         "indicators_message": indicators_message,
         "company_detected": rule_result["company_detected"],
@@ -201,4 +238,4 @@ def health():
 load_or_train_model()
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host=config.FLASK_HOST, port=config.FLASK_PORT, debug=config.FLASK_DEBUG)

@@ -244,29 +244,51 @@ async function runAnalysis(requestFn) {
   }
 }
 
-// 7. Render Verdict Report
+// 7. Render Verdict Report (v1.0 Risk Assessment + backward compat)
+const RISK_META = {
+  Critical: { emoji: "🚨", label: "CRITICAL RISK", cls: "HIGH", color: "#f43f5e" },
+  High: { emoji: "🔴", label: "HIGH RISK", cls: "HIGH", color: "#f43f5e" },
+  Medium: { emoji: "🟡", label: "MEDIUM RISK", cls: "MEDIUM", color: "#f59e0b" },
+  Low: { emoji: "🟢", label: "LOW RISK", cls: "LOW", color: "#10b981" },
+};
+
 function renderReport(data) {
   report.hidden = false;
 
-  const isFake = data.prediction === "Fake";
+  // New primary fields with fallback to legacy.
+  const level = data.overall_risk_level
+    || (data.risk_level ? data.risk_level.charAt(0) + data.risk_level.slice(1).toLowerCase() : "Low");
+  const meta = RISK_META[level] || RISK_META.Low;
+  const isRisky = level === "Critical" || level === "High";
+  const isFakeLegacy = data.prediction === "Fake";
+
   const banner = document.getElementById("verdict-banner");
-  banner.className = "verdict-banner " + (isFake ? "fake" : "genuine");
+  banner.className = "verdict-banner " + (isRisky || isFakeLegacy ? "fake" : "genuine");
 
   const stamp = document.getElementById("stamp");
-  stamp.textContent = isFake ? "SUSPICIOUS / SCAM" : "LEGITIMATE / GENUINE";
-  stamp.className = "stamp-badge " + (isFake ? "fake" : "genuine");
+  stamp.textContent = `${meta.emoji} ${level.toUpperCase()}`;
+  stamp.className = "stamp-badge " + (isRisky || isFakeLegacy ? "fake" : "genuine");
 
   const riskChip = document.getElementById("risk-chip");
-  riskChip.textContent = `${data.risk_level} RISK`;
-  riskChip.className = "risk-pill " + data.risk_level;
+  riskChip.textContent = meta.label;
+  riskChip.className = "risk-pill " + meta.cls;
 
   const caption = document.getElementById("score-caption");
-  caption.textContent = isFake
-    ? "Estimated Scam & Fraud Probability"
-    : "Confidence this advertisement is genuine";
+  if (data.summary) {
+    caption.textContent = data.summary;
+  } else {
+    caption.textContent = isFakeLegacy
+      ? "Estimated Scam & Fraud Probability"
+      : "Confidence this advertisement is genuine";
+  }
 
-  // Score & Dial animation
-  const displayScore = isFake ? data.fake_probability : data.confidence_score;
+  // Score & Dial animation (prefer hybrid_score 0-1, fallback legacy 0-100).
+  let displayScore;
+  if (typeof data.hybrid_score === "number") {
+    displayScore = data.hybrid_score <= 1 ? data.hybrid_score * 100 : data.hybrid_score;
+  } else {
+    displayScore = isFakeLegacy ? data.fake_probability : data.confidence_score;
+  }
   const scoreVal = document.getElementById("score-value");
   scoreVal.textContent = Math.round(displayScore);
 
@@ -274,56 +296,101 @@ function renderReport(data) {
   // Circumference for r=50: 2 * PI * 50 = 314.159
   const circumference = 314.159;
   const offset = circumference - (circumference * displayScore) / 100;
-  
-  let dialColor = "#10b981"; // Emerald
-  if (data.risk_level === "HIGH") {
-    dialColor = "#f43f5e"; // Rose / Red
-  } else if (data.risk_level === "MEDIUM") {
-    dialColor = "#f59e0b"; // Amber
-  }
 
   requestAnimationFrame(() => {
-    dialFill.style.stroke = dialColor;
+    dialFill.style.stroke = meta.color;
     dialFill.style.strokeDashoffset = offset;
   });
 
-  // Technical Metric Cards
-  document.getElementById("rule-score-val").textContent = `${data.rule_score}/100`;
-  document.getElementById("ml-score-val").textContent = `${Math.round(data.ml_probability)}%`;
+  // Technical Metric Cards (support both new 0-1 and legacy 0-100 fields).
+  const ruleVal = typeof data.rule_score === "number" && data.rule_score <= 1
+    ? `${Math.round(data.rule_score * 100)}/100`
+    : (data.rule_score_100 != null ? `${data.rule_score_100}/100` : `${data.rule_score}/100`);
+  const mlVal = typeof data.ml_score === "number" && data.ml_score <= 1
+    ? `${Math.round(data.ml_score * 100)}%`
+    : `${Math.round(data.ml_probability)}%`;
+  document.getElementById("rule-score-val").textContent = ruleVal;
+  document.getElementById("ml-score-val").textContent = mlVal;
   document.getElementById("company-val").textContent = data.company_detected || "Not identified";
   document.getElementById("source-val").textContent = data.source || "Text input";
 
-  // Evidence Cards
+  // Risk summary + categories + confidence.
+  const summaryEl = document.getElementById("risk-summary");
+  if (summaryEl) summaryEl.textContent = data.summary || data.indicators_message || "Assessment complete.";
+  const confBadge = document.getElementById("confidence-badge");
+  if (confBadge) confBadge.textContent = data.confidence ? `${data.confidence} confidence` : "—";
+  const catsEl = document.getElementById("risk-categories");
+  if (catsEl) {
+    catsEl.innerHTML = "";
+    (data.risk_categories || []).forEach(cat => {
+      const s = document.createElement("span");
+      s.className = "sample-chip legit";
+      s.textContent = cat;
+      catsEl.appendChild(s);
+    });
+  }
+
+  // Evidence Cards (prefer key_indicators, fallback legacy indicators).
   const list = document.getElementById("evidence-list");
   const noEvidence = document.getElementById("no-evidence");
   const countBadge = document.getElementById("evidence-count-badge");
   list.innerHTML = "";
 
-  if (data.indicators && data.indicators.length > 0) {
+  const keyInds = data.key_indicators || data.indicators || [];
+  if (keyInds.length > 0) {
     noEvidence.hidden = true;
-    countBadge.textContent = `${data.indicators.length} detected`;
-    data.indicators.forEach(ind => {
+    countBadge.textContent = `${keyInds.length} detected`;
+    keyInds.forEach(ind => {
       const item = document.createElement("div");
       item.className = "evidence-item";
+      const title = escapeHtml(ind.name || ind.label || ind.id || "Indicator");
+      const idTag = ind.id ? ` [${escapeHtml(ind.id)}]` : "";
+      const body = escapeHtml(ind.explanation || ind.detail || "");
+      const ev = ind.evidence ? `<p style="opacity:.75"><em>"${escapeHtml(ind.evidence)}"</em></p>` : (ind.detail ? "" : "");
+      const sev = escapeHtml((ind.severity || "").toUpperCase());
       item.innerHTML = `
         <div class="evidence-body">
-          <strong>${escapeHtml(ind.label)}</strong>
-          <p>${escapeHtml(ind.detail || "")}</p>
+          <strong>${title}${idTag}</strong>
+          <p>${body}</p>
+          ${ev}
         </div>
-        <span class="ev-badge ${ind.severity}">${ind.severity}</span>
+        <span class="ev-badge ${sev}">${sev}</span>
       `;
       list.appendChild(item);
     });
   } else {
     noEvidence.hidden = false;
     countBadge.textContent = "0 signals";
-    const textMsg = data.indicators_message || "No obvious fraud indicators or red flags found.";
+    const textMsg = data.summary || data.indicators_message || "No obvious fraud indicators or red flags found.";
     noEvidence.querySelector("span").textContent = textMsg;
+  }
+
+  // Employer verification.
+  const verText = document.getElementById("verification-text");
+  if (verText) {
+    const v = data.employer_verification;
+    if (v) {
+      verText.textContent = `Website: ${v.company_website} • Email match: ${v.email_domain_match} • Careers page: ${v.role_on_careers_page}. ${v.notes || ""}`;
+    } else {
+      verText.textContent = "Could not check.";
+    }
+  }
+
+  // Recommended actions.
+  const actionsEl = document.getElementById("actions-list");
+  if (actionsEl) {
+    actionsEl.innerHTML = "";
+    (data.recommended_actions || []).forEach(a => {
+      const item = document.createElement("div");
+      item.className = "evidence-item";
+      item.innerHTML = `<div class="evidence-body"><p>${escapeHtml(a)}</p></div>`;
+      actionsEl.appendChild(item);
+    });
   }
 
   // Raw / Processed Text
   const rawPreview = document.getElementById("extracted-preview");
-  rawPreview.textContent = data.extracted_text_preview || "No preview text available.";
+  rawPreview.textContent = data.raw_text_preview || data.extracted_text_preview || "No preview text available.";
 }
 
 function escapeHtml(str) {
