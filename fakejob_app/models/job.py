@@ -46,6 +46,19 @@ CREATE TABLE IF NOT EXISTS jobs (
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_risk ON jobs(overall_risk_level);
 CREATE INDEX IF NOT EXISTS idx_jobs_source ON jobs(source);
+CREATE TABLE IF NOT EXISTS scan_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at TEXT NOT NULL DEFAULT '',
+    finished_at TEXT NOT NULL DEFAULT '',
+    sources TEXT NOT NULL DEFAULT '[]',
+    fetched INTEGER NOT NULL DEFAULT 0,
+    evaluated INTEGER NOT NULL DEFAULT 0,
+    stored INTEGER NOT NULL DEFAULT 0,
+    skipped INTEGER NOT NULL DEFAULT 0,
+    duplicates INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'unknown',
+    errors TEXT NOT NULL DEFAULT '{}'
+);
 """
 
 
@@ -67,6 +80,11 @@ def init_db(db_path: Optional[str] = None) -> str:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def utcnow_iso() -> str:
+    """Current UTC time as ISO string (public alias for services)."""
+    return _now_iso()
 
 
 @dataclass
@@ -211,3 +229,55 @@ def risk_counts(db_path: Optional[str] = None) -> dict[str, int]:
         out[str(r["overall_risk_level"])] = int(r["n"])
     out["total"] = sum(out.values())
     return out
+
+
+def record_scan_run(summary: dict[str, Any], db_path: Optional[str] = None) -> int:
+    """Persist one scan run. Returns the history row id (0 on failure)."""
+    try:
+        payload = {
+            "started_at": str(summary.get("started_at") or ""),
+            "finished_at": str(summary.get("finished_at") or _now_iso()),
+            "sources": json.dumps(list((summary.get("sources") or {}).keys())),
+            "fetched": int(summary.get("fetched") or 0),
+            "evaluated": int(summary.get("evaluated") or 0),
+            "stored": int(summary.get("stored") or 0),
+            "skipped": int(summary.get("skipped") or 0),
+            "duplicates": int(summary.get("duplicates") or 0),
+            "status": str(summary.get("status") or "unknown"),
+            "errors": json.dumps(summary.get("errors") or {}),
+        }
+    except Exception:
+        return 0
+    try:
+        with _lock, _connect(db_path) as conn:
+            cur = conn.execute(
+                "INSERT INTO scan_history (started_at, finished_at, sources, fetched,"
+                " evaluated, stored, skipped, duplicates, status, errors)"
+                " VALUES (:started_at, :finished_at, :sources, :fetched,"
+                " :evaluated, :stored, :skipped, :duplicates, :status, :errors)",
+                payload,
+            )
+            conn.commit()
+            return int(cur.lastrowid or 0)
+    except Exception:
+        return 0
+
+
+def get_last_scan(db_path: Optional[str] = None) -> Optional[dict[str, Any]]:
+    """Most recent scan run, or None if no scan has been recorded yet."""
+    try:
+        with _lock, _connect(db_path) as conn:
+            row = conn.execute(
+                "SELECT * FROM scan_history ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+    except Exception:
+        return None
+    if not row:
+        return None
+    d = dict(row)
+    for col, default in (("sources", []), ("errors", {})):
+        try:
+            d[col] = json.loads(d.get(col) or "null") or default
+        except (json.JSONDecodeError, TypeError):
+            d[col] = default
+    return d

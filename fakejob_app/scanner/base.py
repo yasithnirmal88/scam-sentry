@@ -12,15 +12,66 @@ from __future__ import annotations
 import html
 import logging
 import re
+import time
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass
 from typing import Any, Callable
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+
+import requests
 
 import config
 
 logger = logging.getLogger("scam_sentry.scanner")
 
 _TAG_RE = re.compile(r"<[^>]+>")
+
+# Tracking params that create distinct URLs for the same posting.
+_TRACKING_PARAMS = {"utm_source", "utm_medium", "utm_campaign", "utm_term",
+                    "utm_content", "fbclid", "gclid", "ref", "source"}
+
+
+def http_get(url: str, params: dict | None = None,
+             timeout: int | None = None) -> requests.Response:
+    """GET with retries + shared User-Agent. Raises the last error if all fail."""
+    attempts = max(1, config.SCANNER_RETRIES + 1)
+    last_exc: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            resp = requests.get(
+                url,
+                params=params,
+                headers={"User-Agent": config.SCANNER_USER_AGENT,
+                         "Accept": "application/json"},
+                timeout=timeout or config.SCANNER_TIMEOUT,
+            )
+            resp.raise_for_status()
+            return resp
+        except Exception as exc:
+            last_exc = exc
+            logger.warning("GET %s attempt %d/%d failed: %s", url, attempt, attempts, exc)
+            if attempt < attempts:
+                time.sleep(config.SCANNER_RETRY_BACKOFF * attempt)
+    assert last_exc is not None
+    raise last_exc
+
+
+def normalize_url(url: str | None) -> str:
+    """Canonicalize a posting URL so re-scans dedupe reliably."""
+    if not url:
+        return ""
+    try:
+        parts = urlparse(url.strip())
+    except Exception:
+        return (url or "").strip()
+    scheme = (parts.scheme or "https").lower()
+    host = (parts.netloc or "").lower()
+    path = parts.path.rstrip("/") or "/"
+    if path != "/":
+        path = parts.path.rstrip("/")
+    query = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)
+             if k.lower() not in _TRACKING_PARAMS]
+    return urlunparse((scheme, host, path, "", urlencode(query), ""))
 
 
 def clean_html(raw: str | None) -> str:

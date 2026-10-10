@@ -47,9 +47,16 @@
   <main class="main-layout">
 
     <div class="hero-section">
-      <div class="hero-chip">Live Scan &bull; RemoteOK + Remotive &bull; Risk Engine Evaluated</div>
+      <div class="hero-chip">Live Scan &bull; {{ sources | join(" + ") }} &bull; Risk Engine Evaluated</div>
       <h1 class="hero-title">Scanned Jobs by Risk Level</h1>
       <p class="hero-desc">Every listing below was automatically evaluated by the Scam Sentry Risk Engine. Click any job for the full evidence report.</p>
+    </div>
+
+    <!-- Scan status strip -->
+    <div class="metrics-grid dash-status">
+      <div class="metric-card"><div class="metric-label">Total Jobs Stored</div><div class="metric-val" id="total-jobs">{{ total }}</div><div class="metric-meta">across all sources</div></div>
+      <div class="metric-card"><div class="metric-label">Last Scan</div><div class="metric-val truncate" id="last-scan-time">{{ (last_scan.finished_at[:16] if last_scan and last_scan.finished_at else "Never") | replace("T", " ") }}</div><div class="metric-meta" id="last-scan-detail">{% if last_scan %}{{ last_scan.stored }} stored &bull; {{ last_scan.fetched }} fetched{% else %}no scan recorded yet{% endif %}</div></div>
+      <div class="metric-card"><div class="metric-label">Last Scan Status</div><div class="metric-val" id="last-scan-status">{% if last_scan %}{{ last_scan.status }}{% else %}—{% endif %}</div><div class="metric-meta">success / partial / failed</div></div>
     </div>
 
     <!-- Risk counts -->

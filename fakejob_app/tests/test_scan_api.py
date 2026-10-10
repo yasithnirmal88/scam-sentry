@@ -59,7 +59,7 @@ def test_trigger_scan_stores_with_risk(api_client, monkeypatch):
             return fake_jobs
 
     monkeypatch.setattr(svc, "get_scanner", lambda name, **k: FakeScanner())
-    res = api_client.post("/api/scan", json={"sources": ["remoteok"], "limit": 5})
+    res = api_client.post("/api/scan?sync=1", json={"sources": ["remoteok"], "limit": 5})
     assert res.status_code == 200
     body = res.get_json()
     assert body["stored"] == 1 and body["sources"] == {"remoteok": 1}

@@ -31,7 +31,7 @@ def test_remoteok_normalizes(monkeypatch):
          "description": "<p>Build <b>APIs</b></p>", "url": "https://remoteok.com/x",
          "epoch": 1700000000, "date": "2023-11-14"},
     ]
-    monkeypatch.setattr("scanner.remoteok.requests.get", lambda *a, **k: _Resp(payload))
+    monkeypatch.setattr("scanner.base.requests.get", lambda *a, **k: _Resp(payload))
     jobs = RemoteOKScanner().safe_fetch(5)
     assert len(jobs) == 1
     j = jobs[0]
@@ -46,7 +46,7 @@ def test_remotive_normalizes(monkeypatch):
          "description": "<p>Design things</p>", "url": "https://remotive.com/y",
          "publication_date": "2026-02-01"},
     ]}
-    monkeypatch.setattr("scanner.remotive.requests.get", lambda *a, **k: _Resp(payload))
+    monkeypatch.setattr("scanner.base.requests.get", lambda *a, **k: _Resp(payload))
     jobs = RemotiveScanner().safe_fetch(5)
     assert len(jobs) == 1
     assert jobs[0].company == "Beta" and jobs[0].source == "remotive"
@@ -55,7 +55,7 @@ def test_remotive_normalizes(monkeypatch):
 def test_safe_fetch_never_raises(monkeypatch):
     def boom(*a, **k):
         raise ConnectionError("down")
-    monkeypatch.setattr("scanner.remoteok.requests.get", boom)
+    monkeypatch.setattr("scanner.base.requests.get", boom)
     assert RemoteOKScanner().safe_fetch(5) == []
 
 

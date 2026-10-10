@@ -10,10 +10,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-import requests
-
-import config
-from .base import BaseScanner, NormalizedJob, clean_html, register
+from .base import BaseScanner, NormalizedJob, clean_html, http_get, register
 
 logger = logging.getLogger("scam_sentry.scanner.remoteok")
 
@@ -25,12 +22,7 @@ class RemoteOKScanner(BaseScanner):
     name = "remoteok"
 
     def fetch(self, limit: int = 20) -> list[NormalizedJob]:
-        resp = requests.get(
-            API_URL,
-            headers={"User-Agent": config.SCANNER_USER_AGENT, "Accept": "application/json"},
-            timeout=self.timeout,
-        )
-        resp.raise_for_status()
+        resp = http_get(API_URL, timeout=self.timeout)
         items = resp.json()
         jobs: list[NormalizedJob] = []
         for item in items:

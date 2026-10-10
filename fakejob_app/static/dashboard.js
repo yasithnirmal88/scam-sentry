@@ -87,6 +87,34 @@ function render() {
   }
 }
 
+function updateStatusStrip(status) {
+  if (!status) return;
+  const last = status.last_scan;
+  const timeEl = document.getElementById("last-scan-time");
+  const detailEl = document.getElementById("last-scan-detail");
+  const statusEl = document.getElementById("last-scan-status");
+  if (last) {
+    if (timeEl) timeEl.textContent = (last.finished_at || last.started_at || "").slice(0, 16).replace("T", " ");
+    if (detailEl) detailEl.textContent = `${last.stored} stored • ${last.fetched} fetched`;
+    if (statusEl) statusEl.textContent = status.running ? "running…" : last.status;
+  } else if (statusEl && !status.running) {
+    statusEl.textContent = "—";
+  } else if (statusEl) {
+    statusEl.textContent = "running…";
+  }
+}
+
+async function refreshScanStatus() {
+  try {
+    const res = await fetch("/api/scan/status");
+    const data = await res.json();
+    if (res.ok) updateStatusStrip(data);
+    return res.ok ? data : null;
+  } catch (err) {
+    return null;
+  }
+}
+
 async function loadJobs() {
   errorBox.hidden = true;
   try {
@@ -101,6 +129,8 @@ async function loadJobs() {
         el.textContent = counts[k.charAt(0).toUpperCase() + k.slice(1)];
       }
     });
+    const totalEl = document.getElementById("total-jobs");
+    if (totalEl && data.total != null) totalEl.textContent = data.total;
     render();
   } catch (err) {
     errorBox.hidden = false;
@@ -150,7 +180,7 @@ document.querySelectorAll(".dash-count").forEach((card) => {
   });
 });
 
-// Scan trigger
+// Scan trigger (async: POST returns 202, then poll status until idle)
 scanBtn.addEventListener("click", async () => {
   const sources = selectedSources();
   if (sources.length === 0) {
@@ -168,9 +198,14 @@ scanBtn.addEventListener("click", async () => {
       body: JSON.stringify({ sources, limit: 20 }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Scan failed");
-    scanStatus.textContent = `Done: ${data.stored} stored (${data.fetched} fetched across ${sources.join(", ")}).`;
-    await loadJobs();
+    if (!res.ok && res.status !== 202) throw new Error(data.error || data.reason || "Scan failed");
+    if (res.status === 202 || data.status === "running") {
+      await pollUntilIdle();
+    } else {
+      scanStatus.textContent = `Done: ${data.stored} stored (${data.fetched} fetched).`;
+      await loadJobs();
+      await refreshScanStatus();
+    }
   } catch (err) {
     errorBox.hidden = false;
     errorBox.textContent = err.message || "Scan failed.";
@@ -181,4 +216,27 @@ scanBtn.addEventListener("click", async () => {
   }
 });
 
+async function pollUntilIdle() {
+  for (let i = 0; i < 120; i++) {
+    await new Promise((r) => setTimeout(r, 3000));
+    const status = await refreshScanStatus();
+    if (!status) break;
+    if (!status.running) {
+      const last = status.last_scan;
+      if (last) {
+        scanStatus.textContent = `Done (${last.status}): ${last.stored} stored, ${last.fetched} fetched.`;
+      } else {
+        scanStatus.textContent = "Scan finished.";
+      }
+      await loadJobs();
+      break;
+    }
+    const last = status.last_scan;
+    scanStatus.textContent = last
+      ? `Scanning… (${last.stored} stored so far, started ${String(last.started_at).slice(11, 16)})`
+      : "Scanning…";
+  }
+}
+
 loadJobs();
+refreshScanStatus();

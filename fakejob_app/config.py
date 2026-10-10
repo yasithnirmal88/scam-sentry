@@ -52,3 +52,15 @@ DATABASE_PATH = os.getenv("SCAM_SENTRY_DB", os.path.join(APP_DIR, "scam_sentry.d
 SCANNER_TIMEOUT = int(os.getenv("SCANNER_TIMEOUT", "20"))
 SCANNER_DEFAULT_LIMIT = int(os.getenv("SCANNER_LIMIT", "20"))
 SCANNER_USER_AGENT = os.getenv("SCANNER_USER_AGENT", "ScamSentry/1.0 (+job-risk-research)")
+
+# Scheduled scanning (Phase 3). Scheduler only starts when SCAN_ENABLED=true,
+# so local dev / offline environments are unaffected by default.
+SCAN_ENABLED = os.getenv("SCAN_ENABLED", "false").lower() == "true"
+SCAN_INTERVAL_HOURS = float(os.getenv("SCAN_INTERVAL_HOURS", "6"))
+SCAN_RUN_ON_STARTUP = os.getenv("SCAN_RUN_ON_STARTUP", "true").lower() == "true"
+# Comma-separated subset of registered sources; empty = all sources.
+SCAN_SOURCES = [s.strip() for s in os.getenv("SCAN_SOURCES", "").split(",") if s.strip()]
+SCAN_LIMIT = int(os.getenv("SCAN_LIMIT", str(SCANNER_DEFAULT_LIMIT)))
+# HTTP reliability: total attempts = 1 + SCANNER_RETRIES, linear backoff.
+SCANNER_RETRIES = int(os.getenv("SCANNER_RETRIES", "2"))
+SCANNER_RETRY_BACKOFF = float(os.getenv("SCANNER_RETRY_BACKOFF", "2"))
