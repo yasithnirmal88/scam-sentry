@@ -25,6 +25,14 @@ ML_WEIGHT = 0.45
 CRITICAL_SCORE_FLOOR = 70
 STRONG_SCORE_FLOOR = 60
 
+# ML honesty (Phase 4): GradientBoosting probabilities are over-confident, and
+# the committed model is trained on a synthetic set. Pull the ML probability
+# toward a neutral prior so the ML signal never overstates itself; the rule
+# engine stays the source of truth. OFF restores the raw model output.
+ML_CALIBRATION = os.getenv("ML_CALIBRATION", "true").lower() == "true"
+ML_CALIBRATION_PRIOR = float(os.getenv("ML_CALIBRATION_PRIOR", "0.5"))
+ML_CALIBRATION_SHRINK = float(os.getenv("ML_CALIBRATION_SHRINK", "0.7"))
+
 # Legacy thresholds (kept for backward-compatible fields).
 FAKE_THRESHOLD = 50
 HIGH_RISK_THRESHOLD = 65

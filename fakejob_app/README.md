@@ -194,7 +194,7 @@ No LinkedIn scraping, by design.
 | `/api/scan` | POST `{"sources": [...], "limit": N}` + `X-Scan-Token` header | Async scan → `202`; `?sync=1` to wait. `401` without a valid `SCAN_API_TOKEN`, `429` when over the rate limit |
 | `/api/scan/status` | GET | Running/idle + last recorded run |
 | `/api/sources` | GET | Registered scanner names |
-| `/api/health` | GET | `{"status": "ok", "model_loaded": false}` — `model_loaded` flips to `true` after the first `/api/analyze` (the ML model loads lazily) |
+| `/api/health` | GET | `{"status": "ok", "model_loaded": false, "model": {...}}` — `model_loaded` flips to `true` after the first `/api/analyze` (the ML model loads lazily); `model` is the model card (source/estimator/samples/accuracy) |
 
 ## Environment variables
 
@@ -220,6 +220,8 @@ See `.env.example`. Highlights:
 | `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | OpenAI defaults | OpenAI-compatible endpoint |
 | `LLM_TIMEOUT` / `LLM_MAX_TOKENS` / `LLM_TEMPERATURE` | `12` / `400` / `0.2` | LLM request controls |
 | `LLM_SCANNER_ENABLED` | `false` | Also enhance automatically-scanned listings |
+| `ML_CALIBRATION` | `true` | Shrink the ML probability toward a neutral prior |
+| `ML_CALIBRATION_PRIOR` / `ML_CALIBRATION_SHRINK` | `0.5` / `0.7` | Calibration parameters |
 
 ## Abuse & cost control
 
@@ -237,6 +239,28 @@ See `.env.example`. Highlights:
 - **Fail-closed LLM startup:** with `LLM_ENABLED=true` (the only path that
   spends money / sends text off-box), the app refuses to start unless
   `SCAN_API_TOKEN` *and* both rate limits are configured. Set them first.
+
+## ML honesty
+
+The ML classifier is a **GradientBoosting model trained on a synthetic
+dataset** (the EMSCAD/Kaggle file is referenced by the proposal but unavailable
+offline — see `model_training.py`). To keep the product honest about that:
+
+- The ML probability is **calibrated**: `predict_proba` from GBC is
+  over-confident, so every analysis shrinks it toward a neutral prior
+  (`ML_CALIBRATION_PRIOR=0.5`, `ML_CALIBRATION_SHRINK=0.7`). The displayed
+  `ml_probability`/`ml_score` and the `hybrid_score` use the calibrated value;
+  the raw model output is still returned as `ml_raw_probability` for
+  transparency.
+- Every `/api/analyze` response carries a `ml_note` (provenance: training
+  source, sample count, validation accuracy) plus a `calibration` metadata
+  block, and `/api/health` now reports the model card
+  (`source`, `estimator`, `n_samples`, `n_features`, `validation_accuracy`,
+  `trained_at_utc`). Validation accuracy on synthetic data is **not** a claim
+  about real-world performance.
+- The UI labels the ML card "synthetic-trained · supporting signal" and the
+  verdict is always set by the deterministic Risk Engine, never by the ML
+  probability.
 
 ## Safety notes
 
