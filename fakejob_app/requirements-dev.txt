@@ -1,0 +1,4 @@
+# Dev / test dependencies for Scam Sentry.
+-r requirements.txt
+pytest>=8.0
+pytest-cov>=5.0
