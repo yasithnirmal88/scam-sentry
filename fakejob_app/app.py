@@ -42,7 +42,7 @@ from text_processing import preprocess
 from ocr_utils import extract_text
 from model_training import build_synthetic_dataset, train
 from risk.indicators import analyze_indicators
-from risk.engine import assess_risk
+from risk.engine import assess_risk, has_critical
 from risk.verification import verify_employer
 from risk.actions import generate_actions
 from models.job import count_jobs, get_job, init_db, list_jobs, risk_counts
@@ -133,7 +133,10 @@ def classify(text):
     # the rest of the posting reads. A weighted-average score can let the
     # ML side dilute a single such red flag below the Fake threshold, so
     # apply a floor whenever one fires rather than let it get averaged away.
-    if rule_result.get("critical_hit"):
+    # The floor keys off BOTH the legacy fraud-feature flags and the new
+    # graded indicators so score and verdict logic stay aligned.
+    fired_early = analyze_indicators(text)
+    if rule_result.get("critical_hit") or has_critical(fired_early):
         final_score = max(final_score, fraud_features.CRITICAL_SCORE_FLOOR)
     elif rule_result.get("strong_hit"):
         final_score = max(final_score, fraud_features.STRONG_SCORE_FLOOR)
@@ -168,7 +171,8 @@ def classify(text):
     # Indicator-driven verdict; hybrid score is a supporting signal only.
     # Critical score-floor: any Critical indicator forces Critical level
     # regardless of ML score (enforced inside assess_risk determination rules).
-    fired = analyze_indicators(text)
+    # (fired_early was already computed above for the hybrid floor; reuse it.)
+    fired = fired_early
     assessment = assess_risk(fired)
     verification = verify_employer(text, fired)
     actions = generate_actions(fired, assessment["overall_risk_level"])
