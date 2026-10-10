@@ -108,12 +108,16 @@ def vectorize(text):
     return combined, result
 
 
-def classify(text, posted_at=None):
+def classify(text, posted_at=None, use_llm=None):
     """Full risk report for one posting.
 
     `posted_at` is optional (ISO string, epoch, or datetime) and feeds the
     Ghost/Stale freshness signals. Single-job paste/upload calls omit it,
     which is handled gracefully as "unknown date".
+
+    `use_llm` controls the optional LLM enhancement layer. When None it
+    defaults to `config.LLM_ENABLED`. The LLM never changes the risk level
+    decided by the Risk Engine; it only improves the summary/wording.
     """
     if not text or len(text.strip()) < config.MIN_TEXT_LENGTH:
         return {
@@ -186,6 +190,32 @@ def classify(text, posted_at=None):
     verification = verify_employer(text, fired)
     actions = generate_actions(fired, assessment["overall_risk_level"])
 
+    # ---- Optional LLM enhancement (never changes the verdict) -------------
+    # The deterministic Risk Engine above is the SOURCE OF TRUTH for the
+    # risk level. When enabled, the LLM only rewrites the human-facing
+    # summary and adds a short reasoning note. Any failure, timeout, or
+    # unsafe output degrades silently to the engine's own summary.
+    engine_summary = assessment["summary"]
+    want_llm = config.LLM_ENABLED if use_llm is None else bool(use_llm)
+    llm_summary = llm_explanation = llm_model = None
+    if want_llm:
+        try:
+            from risk.llm_enhancer import enhance as _llm_enhance
+            enhanced = _llm_enhance({
+                "overall_risk_level": assessment["overall_risk_level"],
+                "risk_categories": assessment["risk_categories"],
+                "confidence": assessment["confidence"],
+                "summary": engine_summary,
+                "key_indicators": assessment["key_indicators"],
+            }, text)
+            if enhanced:
+                llm_summary = enhanced.get("summary")
+                llm_explanation = enhanced.get("explanation")
+                llm_model = enhanced.get("model")
+        except Exception as exc:  # never let the enhancer break analysis
+            logger.warning("LLM enhancement skipped: %s", exc)
+    final_summary = llm_summary or engine_summary
+
     hybrid_01 = round(final_score / 100.0, 3)
     rule_01 = round(rule_score / 100.0, 3)
     ml_01 = round(ml_proba_fake / 100.0, 3)
@@ -195,10 +225,15 @@ def classify(text, posted_at=None):
         "overall_risk_level": assessment["overall_risk_level"],
         "risk_categories": assessment["risk_categories"],
         "confidence": assessment["confidence"],
-        "summary": assessment["summary"],
+        "summary": final_summary,
         "key_indicators": assessment["key_indicators"],
         "employer_verification": verification,
         "recommended_actions": actions,
+        # LLM enhancement metadata (the verdict above is unchanged by it).
+        "llm_enhanced": bool(llm_summary),
+        "llm_model": llm_model,
+        "llm_explanation": llm_explanation,
+        "engine_summary": engine_summary,
         "hybrid_score": hybrid_01,
         "rule_score": rule_01,
         "ml_score": ml_01,

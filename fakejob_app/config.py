@@ -14,7 +14,7 @@ APP_DIR = os.path.dirname(__file__)
 ALLOWED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg"}
 MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB
 
-MODEL_DIR = os.path.join(APP_DIR, "model")
+MODEL_DIR = os.path.join(APP_DIR, "artifacts")
 MIN_TEXT_LENGTH = 15
 
 # Hybrid scoring weights (rule vs ML). Must sum to 1.0.
@@ -68,3 +68,19 @@ SCANNER_RETRY_BACKOFF = float(os.getenv("SCANNER_RETRY_BACKOFF", "2"))
 # Freshness bands (days) for Ghost/Stale signals.
 FRESHNESS_STALE_DAYS = int(os.getenv("FRESHNESS_STALE_DAYS", "60"))
 FRESHNESS_VERY_STALE_DAYS = int(os.getenv("FRESHNESS_VERY_STALE_DAYS", "90"))
+
+# ---------------------------------------------------------------------------
+# Optional LLM enhancement layer (OpenAI-compatible chat/completions).
+# Disabled by default. The deterministic Risk Engine stays the source of
+# truth for the risk level; the LLM only rewrites the human-facing summary
+# and adds a short reasoning note. Any failure degrades to engine output.
+# ---------------------------------------------------------------------------
+LLM_ENABLED = os.getenv("LLM_ENABLED", "false").lower() == "true"
+LLM_API_KEY = os.getenv("LLM_API_KEY", "")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")
+LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
+LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT", "12"))
+LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "400"))
+LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.2"))
+# Scanned listings stay zero-token unless this is explicitly enabled.
+LLM_SCANNER_ENABLED = os.getenv("LLM_SCANNER_ENABLED", "false").lower() == "true"
