@@ -38,7 +38,7 @@ def generate_actions(fired, level):
             actions.append(VERIFY_DOMAIN)
         if "H3" in ids or "M4" in ids:
             actions.append(VERIFY_COMPANY)
-        if "H5" in ids:
+        if ids & {"H5", "M5"}:
             actions.append(VERIFY_ACTIVE)
         actions.append(CAUTION_PERSONAL)
         # Deduplicate, keep order, cap at 5, floor at 3.
@@ -56,7 +56,7 @@ def generate_actions(fired, level):
     if level == "Medium":
         if ids & {"H1", "H4"}:
             actions.append(VERIFY_DOMAIN)
-        if "H5" in ids or "L3" in ids:
+        if ids & {"H5", "M5", "L3"}:
             actions.append(VERIFY_ACTIVE)
         actions.append(VERIFY_COMPANY)
         actions.append(CAUTION_PERSONAL)
@@ -68,10 +68,12 @@ def generate_actions(fired, level):
                 seen.append(a)
         return seen[:5]
 
-    # Low
+    # Low — but surface the active-role check when ghost signals are present.
     actions = [
         LIGHT_CHECK,
         "Confirm the role and team details in an interview before sharing sensitive data",
         "Proceed normally but stay alert for later fee or data requests",
     ]
+    if ids & {"H5", "M5", "L3"}:
+        actions = [VERIFY_ACTIVE] + [a for a in actions if a != VERIFY_ACTIVE]
     return actions[:3]

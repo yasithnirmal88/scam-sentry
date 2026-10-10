@@ -27,8 +27,12 @@ def evaluate_text(text: str) -> dict[str, Any]:
     return result
 
 
-def evaluate_job(title: str, company: str, location: str, description: str) -> dict[str, Any]:
+def evaluate_job(title: str, company: str, location: str, description: str,
+                 posted_at: Any = None) -> dict[str, Any]:
     """Risk result for a scanned listing. Falls back to rule-only on ML failure.
+
+    `posted_at` (any format accepted by risk.freshness) feeds the Ghost/Stale
+    freshness signals; None means "unknown date" and is handled gracefully.
 
     Raises ValueError when there is too little text — callers skip such jobs
     instead of storing a meaningless report.
@@ -37,8 +41,13 @@ def evaluate_job(title: str, company: str, location: str, description: str) -> d
     if not combined or len(combined.strip()) < config.MIN_TEXT_LENGTH:
         raise ValueError("Not enough text was found to analyse. "
                          "Skipping this listing.")
+    metadata = {"posted_at": posted_at} if posted_at else None
     try:
-        return evaluate_text(combined)
+        from app import classify  # deferred: app imports services, not vice versa
+        result = classify(combined, posted_at=posted_at)
+        if "error" in result:
+            raise ValueError(result["error"])
+        return result
     except ValueError:
         raise
     except Exception as exc:
@@ -48,7 +57,7 @@ def evaluate_job(title: str, company: str, location: str, description: str) -> d
         from risk.indicators import analyze_indicators
         from risk.verification import verify_employer
 
-        fired = analyze_indicators(combined)
+        fired = analyze_indicators(combined, metadata)
         assessment = assess_risk(fired)
         return {
             "overall_risk_level": assessment["overall_risk_level"],

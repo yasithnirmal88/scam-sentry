@@ -108,7 +108,13 @@ def vectorize(text):
     return combined, result
 
 
-def classify(text):
+def classify(text, posted_at=None):
+    """Full risk report for one posting.
+
+    `posted_at` is optional (ISO string, epoch, or datetime) and feeds the
+    Ghost/Stale freshness signals. Single-job paste/upload calls omit it,
+    which is handled gracefully as "unknown date".
+    """
     if not text or len(text.strip()) < config.MIN_TEXT_LENGTH:
         return {
             "error": "Not enough text was found to analyse. Please paste a "
@@ -135,7 +141,10 @@ def classify(text):
     # apply a floor whenever one fires rather than let it get averaged away.
     # The floor keys off BOTH the legacy fraud-feature flags and the new
     # graded indicators so score and verdict logic stay aligned.
-    fired_early = analyze_indicators(text)
+    # posted_at (scanned listings only) feeds the freshness signals here
+    # and in the verdict below via the single shared analysis pass.
+    fresh_meta = {"posted_at": posted_at} if posted_at else None
+    fired_early = analyze_indicators(text, fresh_meta)
     if rule_result.get("critical_hit") or has_critical(fired_early):
         final_score = max(final_score, fraud_features.CRITICAL_SCORE_FLOOR)
     elif rule_result.get("strong_hit"):

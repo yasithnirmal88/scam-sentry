@@ -25,6 +25,7 @@ from fraud_features import (
     URL_PATTERN,
     extract_company_name,
 )
+from risk.freshness import STALE_DAYS, VERY_STALE_DAYS, job_age_days
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -240,18 +241,64 @@ def check_h4(text, metadata=None):
     return False, ""
 
 
-def check_h5(text):
-    """H5: strong ghost / stale signals."""
+def _freshness_context(metadata):
+    """Return (age_days, evergreen_pat_or_None) for stale-signal detectors."""
+    metadata = metadata or {}
+    try:
+        age = job_age_days(metadata.get("posted_at"), now=metadata.get("now"))
+    except Exception:
+        age = None
+    return age
+
+
+def check_h5(text, metadata=None):
+    """H5: strong ghost / stale signals (wording and/or posting age)."""
     pat = _any_match(text, GHOST_PATTERNS)
+    age = _freshness_context(metadata)
     if pat:
-        return True, _find_snippet(text, pat)
-    # Repost + no concrete team/project detail heuristic.
+        evidence = _find_snippet(text, pat)
+        if age is not None and age > STALE_DAYS:
+            evidence = "%s [posted ~%d days ago]" % (evidence, age)
+        return True, evidence
+    # Very old postings are strong stale signals even without evergreen wording.
+    if age is not None and age > VERY_STALE_DAYS:
+        return True, "Posted ~%d days ago — well beyond a typical hiring window" % age
+    # Old + evergreen-leaning repost without concrete detail.
     lowered = (text or "").lower()
     has_team_detail = bool(re.search(r"\bteam\b.{0,40}(of \d+|lead|manager|standup|sprint)", lowered))
     has_project_detail = bool(re.search(r"\bproject\b.{0,40}[a-z]{4,}", lowered))
     if "repost" in lowered and not has_team_detail and not has_project_detail:
         return True, _find_snippet(text, r"repost")
     return False, ""
+
+
+# Concrete start-date / timeline language. Its absence supports (but never
+# alone triggers) the M5 aging signal.
+TIMELINE_PATTERNS = [
+    r"\bstart(ing)? (date|immediately|asap|in \w+)",
+    r"\bjoin(ing)? (us |our team |in \w+|by )",
+    r"\btimeline\b", r"\bstart date\b",
+    r"\bq[1-4]\b", r"\b20\d\d\b",
+    r"\b(January|February|March|April|May|June|July|August|September|October|November|December)\b",
+]
+
+
+def _has_timeline(text):
+    return _any_match(text or "", TIMELINE_PATTERNS) is not None
+
+
+def check_m5(text, metadata=None):
+    """M5: possibly stale posting (aging listing, weaker than H5)."""
+    age = _freshness_context(metadata)
+    if age is None:
+        return False, ""
+    if age <= STALE_DAYS or age > VERY_STALE_DAYS:
+        # Fresh listings are fine; very old ones belong to H5 instead.
+        return False, ""
+    evidence = "Posted ~%d days ago" % age
+    if not _has_timeline(text):
+        evidence += "; no start date or timeline mentioned"
+    return True, evidence
 
 
 # ---------------------------------------------------------------------------
@@ -378,6 +425,8 @@ INDICATOR_DEFS = [
      "Excessive shouting, slang, or pressure phrasing is unusual for professional hiring and merits caution in context."),
     ("M4", "Limited company presence signals", "Medium", "Suspicious", check_m4,
      "A named company with no website, email, or phone provided offers no easy verification path."),
+    ("M5", "Possibly stale posting", "Medium", "Ghost/Stale", check_m5,
+     "The listing is aging past a typical hiring window, so the role may no longer be active. Age alone proves nothing — confirm before applying."),
     ("L1", "Title / duties mismatch", "Low", "Suspicious", check_l1,
      "Minor mismatch between a senior-sounding title and generic duties. Weak signal on its own."),
     ("L2", "Benefits not mentioned", "Low", "Suspicious", check_l2,
@@ -395,7 +444,7 @@ def analyze_indicators(text, metadata=None):
     for ind_id, name, severity, category, fn, explanation in INDICATOR_DEFS:
         try:
             # Detectors needing metadata accept (text, metadata); others (text,).
-            if ind_id in ("H1", "H4"):
+            if ind_id in ("H1", "H4", "H5", "M5"):
                 hit, evidence = fn(text or "", metadata)
             else:
                 # H3/M4 use normalized-company extraction internally.
@@ -415,8 +464,9 @@ def analyze_indicators(text, metadata=None):
     # Strongest first: Critical > High > Medium > Low.
     order = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}
     fired.sort(key=lambda d: (order.get(d["severity"], 4), d["id"]))
-    # Deduplicate L3 when H5 already fired (avoid double counting repost).
+    # Deduplicate age/repost signals when H5 already fired (avoid double
+    # counting the same staleness evidence at lower severities).
     ids = {d["id"] for d in fired}
-    if "H5" in ids and "L3" in ids:
-        fired = [d for d in fired if d["id"] != "L3"]
+    if "H5" in ids:
+        fired = [d for d in fired if d["id"] not in ("L3", "M5")]
     return fired

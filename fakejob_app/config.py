@@ -64,3 +64,7 @@ SCAN_LIMIT = int(os.getenv("SCAN_LIMIT", str(SCANNER_DEFAULT_LIMIT)))
 # HTTP reliability: total attempts = 1 + SCANNER_RETRIES, linear backoff.
 SCANNER_RETRIES = int(os.getenv("SCANNER_RETRIES", "2"))
 SCANNER_RETRY_BACKOFF = float(os.getenv("SCANNER_RETRY_BACKOFF", "2"))
+
+# Freshness bands (days) for Ghost/Stale signals.
+FRESHNESS_STALE_DAYS = int(os.getenv("FRESHNESS_STALE_DAYS", "60"))
+FRESHNESS_VERY_STALE_DAYS = int(os.getenv("FRESHNESS_VERY_STALE_DAYS", "90"))
