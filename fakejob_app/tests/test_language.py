@@ -1,7 +1,5 @@
 """Tests for language discipline (risk/language.py)."""
 
-import pytest
-
 from risk import indicators as ind_mod
 from risk.engine import assess_risk
 from risk.language import alternative_note, check_language

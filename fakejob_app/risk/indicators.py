@@ -14,7 +14,6 @@ Language discipline: explanations describe risk patterns, never claim
 
 import re
 
-import fraud_features
 from fraud_features import (
     PAYMENT_PATTERNS,
     SENSITIVE_INFO_PATTERNS,

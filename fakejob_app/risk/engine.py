@@ -161,7 +161,9 @@ def build_summary(level, fired):
         return ("This posting shows patterns consistent with genuine listings — "
                 "no major fraud or ghost indicators were found. "
                 "Standard verification is still advised, as no screening is perfect.")
-    top = fired[0]
+    top = fired[0] if fired else {}
+    top_id = top.get("id", "?")
+    top_name = top.get("name") or top_id
     n = len(fired)
     alt = alternative_note(top)
     others = (" In total, %d indicators were found." % n) if n > 1 else ""
@@ -171,22 +173,22 @@ def build_summary(level, fired):
                 "high-risk fraud (%s: %s).%s%s "
                 "Treat it as critical risk — do not send money or sensitive data; "
                 "note that %s."
-                % (top["id"], top["name"], others, stale, alt))
+                % (top_id, top_name, others, stale, alt))
     if level == "High":
         return ("Multiple strong indicators suggest elevated risk "
                 "(strongest: %s).%s%s "
                 "Verify the employer carefully before engaging; %s."
-                % (top["name"], others, stale, alt))
+                % (top_name, others, stale, alt))
     if level == "Medium":
         return ("This posting shows some patterns consistent with suspicious listings "
                 "(%s).%s "
                 "Proceed with caution and verify the employer before sharing personal "
                 "details; %s."
-                % (top["name"], stale, alt))
+                % (top_name, stale, alt))
     return ("This posting shows only weak or isolated signals (%s), which suggests "
             "low risk.%s "
             "A light verification pass is still sensible; %s."
-            % (top["name"], stale, alt))
+            % (top_name, stale, alt))
 
 
 def assess_risk(fired):

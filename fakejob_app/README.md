@@ -12,6 +12,32 @@ It never claims a posting is "a scam" or "fake". It reports **risk levels
 with evidence** (🚨 Critical · 🔴 High · 🟡 Medium · 🟢 Low) plus concrete
 next steps.
 
+## How risk levels work (short version)
+
+- Each posting is checked against graded indicators: **C1–C4** (critical:
+  fees, sensitive-data requests, guaranteed-income pressure, known scam
+  patterns), **H1–H5** (high: free email, urgency, missing company, domain
+  mismatch, ghost/stale), **M1–M5** (medium, incl. aging listings),
+  **L1–L3** (low/weak).
+- **First match wins, top-down**: any Critical → Critical; ≥2 High (or
+  1 High + ≥2 Medium) → High; 1 High or ≥2 Medium → Medium; only weak
+  signals or nothing → Low.
+- **Criticals always dominate**: one Critical indicator forces Critical and
+  floors the hybrid score, so the ML side can never average it away.
+  Freshness/staleness adds context but can never override a Critical.
+- **Confidence** reflects evidence strength (multiple strong signals →
+  High; partial → Medium; weak-only → Low), and every summary allows a
+  legitimate alternative explanation. A deterministic safety net
+  re-checks each verdict (Critical floor, impersonation pair, wording).
+
+## What Scam Sentry does NOT do
+
+- No absolute fake/real verdicts — only evidence-backed risk levels.
+- No LinkedIn scraping (and no authenticated or paywalled sources).
+- No browser automation — liveness is inferred from posting dates and
+  wording, not live page checks.
+- No accounts, no email alerts, no auto-applying — it never acts on your behalf.
+
 ## How it works
 
 - **Risk Engine** (`risk/`): severity-graded indicators (C1–C4 critical,
@@ -36,7 +62,7 @@ next steps.
 - Risk dashboard (`/dashboard`): grouped by risk level, counts, filters
   (risk / source / keyword search), job detail pages with full evidence
 - One-click scans from the UI, background scheduler, `scan.py` CLI
-- 51+ automated tests (`pytest`)
+- 120+ automated tests (`pytest`)
 
 ## Running it locally
 

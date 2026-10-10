@@ -199,8 +199,14 @@ def list_jobs(risk_level: Optional[str] = None, source: Optional[str] = None,
         like = f"%{query}%"
         params.extend([like, like, like])
     where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-    limit = max(1, min(int(limit or 50), 200))
-    offset = max(0, int(offset or 0))
+    try:
+        limit = max(1, min(int(limit or 50), 200))
+    except (TypeError, ValueError):
+        limit = 50
+    try:
+        offset = max(0, int(offset or 0))
+    except (TypeError, ValueError):
+        offset = 0
     with _lock, _connect(db_path) as conn:
         rows = conn.execute(
             f"SELECT * FROM jobs {where} ORDER BY scanned_at DESC, id DESC LIMIT ? OFFSET ?",
