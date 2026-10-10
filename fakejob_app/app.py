@@ -34,6 +34,8 @@ import threading
 
 import numpy as np
 from flask import Flask, request, jsonify, render_template
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from scipy.sparse import hstack, csr_matrix
 
 import config
@@ -61,19 +63,69 @@ logger = logging.getLogger("scam_sentry")
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
 
+# Per-IP rate limits (abuse & cost control). Limits are callables so they can
+# be tuned via env/config without restarting; tests toggle `limiter.enabled`.
+# In-memory storage is fine for a single Render worker; per-worker counters
+# on gunicorn multi-worker would need a shared storage backend.
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=[],
+    storage_uri="memory://",
+)
+
+
+def _assert_secure_startup():
+    """Refuse to boot the LLM layer on an un-hardened config.
+
+    The LLM layer is the only path that spends money and sends user text
+    off-box, so enabling it without an API token and rate limits is a fatal
+    config error, not a warning.
+    """
+    if not config.LLM_ENABLED:
+        return
+    missing = []
+    if not config.SCAN_API_TOKEN:
+        missing.append("SCAN_API_TOKEN is not set")
+    if not (config.RATE_LIMIT_ANALYZE and config.RATE_LIMIT_SCAN):
+        missing.append("rate limits are not configured "
+                       "(RATE_LIMIT_ANALYZE / RATE_LIMIT_SCAN)")
+    if missing:
+        raise SystemExit(
+            "Refusing to start: LLM_ENABLED=true but " + "; ".join(missing)
+            + ". Set them before enabling the LLM layer."
+        )
+
+
+_assert_secure_startup()
+
 
 @app.after_request
 def _security_headers(response):
-    """Baseline hardening headers (no auth in this app; keep clickjacking/MIME off)."""
+    """Baseline hardening headers (clickjacking, MIME sniffing, same-origin
+    content policy). Templates load static JS/CSS same-origin plus Google
+    Fonts; inline style attributes are used, so style-src allows them."""
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' "
+        "https://fonts.googleapis.com; font-src https://fonts.gstatic.com; "
+        "img-src 'self' data:; connect-src 'self'; object-src 'none'; "
+        "frame-ancestors 'self'; base-uri 'self'; form-action 'self'",
+    )
     return response
 
 
 @app.errorhandler(413)
 def _file_too_large(_exc):
     return jsonify({"error": "File is too large. Please upload a file under 10 MB."}), 413
+
+
+@app.errorhandler(429)
+def _rate_limited(_exc):
+    return jsonify({"error": "Too many requests. Please slow down and try again."}), 429
 
 _clf = None
 _tfidf = None
@@ -275,6 +327,7 @@ def index():
 
 
 @app.route("/api/analyze/text", methods=["POST"])
+@limiter.limit(lambda: config.RATE_LIMIT_ANALYZE)
 def analyze_text():
     data = request.get_json(silent=True) or {}
     text = data.get("text", "")
@@ -286,6 +339,7 @@ def analyze_text():
 
 
 @app.route("/api/analyze/file", methods=["POST"])
+@limiter.limit(lambda: config.RATE_LIMIT_ANALYZE)
 def analyze_file():
     if "file" not in request.files:
         return jsonify({"error": "No file was uploaded."}), 400
@@ -353,13 +407,31 @@ def api_get_job(job_id):
     return jsonify(job)
 
 
+def _scan_request_authorized():
+    """The scan trigger is private: require the shared `X-Scan-Token` header.
+
+    When `SCAN_API_TOKEN` is unset the endpoint rejects every request (safe
+    default) rather than exposing an open scan trigger.
+    """
+    token = config.SCAN_API_TOKEN
+    return bool(token) and request.headers.get("X-Scan-Token", "") == token
+
+
 @app.route("/api/scan", methods=["POST"])
+@limiter.limit(lambda: config.RATE_LIMIT_SCAN)
 def api_trigger_scan():
     """Trigger a scan manually. Body (JSON, optional): {sources: [...], limit: N}.
+
+    Requires the `X-Scan-Token` header to match `SCAN_API_TOKEN` (401
+    otherwise). Sends 429 when the per-IP rate limit is exceeded.
 
     Runs in a background thread (202) so the web app never blocks.
     Pass ?sync=1 (or {"sync": true}) to wait for completion instead.
     """
+    if not _scan_request_authorized():
+        return jsonify({"error": "Unauthorized: provide the correct "
+                                  "X-Scan-Token header."}), 401
+
     from services import scheduler
     from services.scanner_service import run_scan
 
