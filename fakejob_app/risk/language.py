@@ -60,6 +60,7 @@ _ALTERNATIVES = {
     "M2": "this could also be explained by a negotiable or variable package — ask for the range in writing",
     "M3": "this could also be explained by a non-native author or hasty drafting — weigh it only with other signals",
     "M4": "this could also be explained by a new or stealth company — look for any independent trace of it",
+    "M5": "this could also be explained by a slow hiring process or a re-advertised role — confirm it is still open",
     "L1": "this could also be explained by a loosely written title — clarify the actual duties",
     "L2": "this could also be explained by a minimal posting format — ask about benefits directly",
     "L3": "this could also be explained by routine re-advertising — confirm the role is still open",

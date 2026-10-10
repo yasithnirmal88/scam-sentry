@@ -69,7 +69,8 @@ def run_scan(sources: Optional[list[str]] = None, limit_per_source: int | None =
             seen_urls.add(url)
             job.url = url  # store the canonical form
             try:
-                risk = evaluate_job(job.title, job.company, job.location, job.description)
+                risk = evaluate_job(job.title, job.company, job.location,
+                                    job.description, posted_at=job.posted_at)
             except ValueError as exc:  # too short / unusable text
                 logger.info("Skipping %s: %s", url, exc)
                 summary["skipped"] += 1

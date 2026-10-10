@@ -135,7 +135,7 @@ def test_run_scan_history_and_dedup(tmp_path, monkeypatch):
 
     monkeypatch.setattr(svc, "get_scanner",
                         lambda name, **k: FakeScanner() if name == "s1" else boom(name))
-    def fake_evaluate(title, company, location, description):
+    def fake_evaluate(title, company, location, description, posted_at=None):
         if len(description or "") < 15:
             raise ValueError("too short")
         return {"overall_risk_level": "Critical", "risk_categories": [],

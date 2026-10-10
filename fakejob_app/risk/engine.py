@@ -141,6 +141,19 @@ def assign_confidence(fired, level):
     return "Low"
 
 
+def _ghost_ids(fired):
+    return [d.get("id") for d in (fired or []) if d.get("id") in ("H5", "M5", "L3")]
+
+
+def _staleness_clause(fired):
+    """Careful staleness mention for ghost-signal verdicts (empty when N/A)."""
+    ghost = _ghost_ids(fired)
+    if not ghost:
+        return ""
+    return (" This posting also shows patterns consistent with a possibly "
+            "outdated listing — confirm the role is still active before applying.")
+
+
 def build_summary(level, fired):
     """Careful 1-3 sentence summary with strict language discipline."""
     fired = fired or []
@@ -152,27 +165,28 @@ def build_summary(level, fired):
     n = len(fired)
     alt = alternative_note(top)
     others = (" In total, %d indicators were found." % n) if n > 1 else ""
+    stale = _staleness_clause(fired)
     if level == "Critical":
         return ("High risk of a scam: this posting shows patterns consistent with "
-                "high-risk fraud (%s: %s).%s "
+                "high-risk fraud (%s: %s).%s%s "
                 "Treat it as critical risk — do not send money or sensitive data; "
                 "note that %s."
-                % (top["id"], top["name"], others, alt))
+                % (top["id"], top["name"], others, stale, alt))
     if level == "High":
         return ("Multiple strong indicators suggest elevated risk "
-                "(strongest: %s).%s "
+                "(strongest: %s).%s%s "
                 "Verify the employer carefully before engaging; %s."
-                % (top["name"], others, alt))
+                % (top["name"], others, stale, alt))
     if level == "Medium":
         return ("This posting shows some patterns consistent with suspicious listings "
-                "(%s). "
+                "(%s).%s "
                 "Proceed with caution and verify the employer before sharing personal "
                 "details; %s."
-                % (top["name"], alt))
+                % (top["name"], stale, alt))
     return ("This posting shows only weak or isolated signals (%s), which suggests "
-            "low risk. "
+            "low risk.%s "
             "A light verification pass is still sensible; %s."
-            % (top["name"], alt))
+            % (top["name"], stale, alt))
 
 
 def assess_risk(fired):
