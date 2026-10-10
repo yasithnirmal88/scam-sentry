@@ -1182,3 +1182,128 @@ textarea::placeholder {
     grid-template-columns: 1fr;
   }
 }
+
+/* ------------------------------------------------------------------
+   Job Risk Dashboard (Phase 2)
+   ------------------------------------------------------------------ */
+.nav-link {
+  text-decoration: none;
+  color: inherit;
+  display: inline-block;
+}
+.dash-counts {
+  margin-bottom: 18px;
+}
+.dash-count {
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.dash-count:hover {
+  transform: translateY(-2px);
+}
+.dash-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 18px;
+}
+.dash-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1 1 320px;
+}
+.dash-filter-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.dash-select,
+.dash-search {
+  font: inherit;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 9px 12px;
+  min-height: 42px;
+}
+.dash-search {
+  flex: 1 1 220px;
+}
+.dash-select option {
+  color: #0f172a;
+}
+.dash-scan {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+.dash-scan-sources {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.scan-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  opacity: 0.9;
+  cursor: pointer;
+}
+.dash-group {
+  margin-bottom: 18px;
+}
+.job-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+.job-card {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 14px;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.job-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(6, 182, 212, 0.5);
+}
+.job-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+.job-card-title {
+  font-size: 0.98rem;
+  line-height: 1.35;
+}
+.job-card-meta {
+  margin-top: 6px;
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+.job-card-foot {
+  margin-top: 10px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  opacity: 0.65;
+  font-family: var(--font-mono);
+}
+@media (max-width: 640px) {
+  .dash-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

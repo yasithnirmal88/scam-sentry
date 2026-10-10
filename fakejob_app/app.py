@@ -304,6 +304,40 @@ def api_list_sources():
     return jsonify({"sources": list_sources()})
 
 
+# ---------------------------------------------------------------------------
+# Job Risk Dashboard (Phase 2, server-rendered pages on top of the API)
+# ---------------------------------------------------------------------------
+
+@app.route("/dashboard", methods=["GET"])
+def dashboard():
+    """Dashboard home: jobs grouped by risk level + scan controls."""
+    try:
+        counts = risk_counts()
+    except Exception:
+        counts = {"Low": 0, "Medium": 0, "High": 0, "Critical": 0, "total": 0}
+    return render_template("dashboard.html", counts=counts, sources=list_sources())
+
+
+@app.route("/dashboard/jobs/<int:job_id>", methods=["GET"])
+def dashboard_job_detail(job_id):
+    """Full stored risk report for one scanned job."""
+    try:
+        job = get_job(job_id)
+    except Exception as exc:
+        logger.exception("Dashboard: failed to fetch job %s", job_id)
+        return render_template("job_detail.html", job=None, error=str(exc)), 500
+    if not job:
+        return render_template("job_detail.html", job=None, error="Job not found."), 404
+    job.setdefault("risk_categories", [])
+    job.setdefault("key_indicators", [])
+    job.setdefault("recommended_actions", [])
+    job.setdefault("employer_verification", {
+        "company_website": "Could not check", "email_domain_match": "N/A",
+        "role_on_careers_page": "Unknown", "notes": "",
+    })
+    return render_template("job_detail.html", job=job, error=None)
+
+
 load_or_train_model()
 
 try:
