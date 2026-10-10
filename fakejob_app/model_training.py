@@ -30,10 +30,13 @@ TO USE THE REAL KAGGLE DATASET INSTEAD:
 """
 
 import argparse
+import logging
 import os
 import random
 import re
 import pickle
+
+logger = logging.getLogger(__name__)
 
 import numpy as np
 import pandas as pd
@@ -47,10 +50,25 @@ from scipy.sparse import hstack, csr_matrix
 from fraud_features import extract_all_features, FEATURE_KEYS
 from text_processing import preprocess
 
+try:
+    import config
+    MODEL_DIR = config.MODEL_DIR
+    _TFIDF_MAX_FEATURES = config.TFIDF_MAX_FEATURES
+    _TFIDF_NGRAM_RANGE = config.TFIDF_NGRAM_RANGE
+    _GBC_N_ESTIMATORS = config.GBC_N_ESTIMATORS
+    _GBC_MAX_DEPTH = config.GBC_MAX_DEPTH
+    _GBC_LEARNING_RATE = config.GBC_LEARNING_RATE
+except ImportError:  # standalone script use without config on path
+    MODEL_DIR = os.path.join(os.path.dirname(__file__), "model")
+    _TFIDF_MAX_FEATURES = 800
+    _TFIDF_NGRAM_RANGE = (1, 2)
+    _GBC_N_ESTIMATORS = 120
+    _GBC_MAX_DEPTH = 3
+    _GBC_LEARNING_RATE = 0.08
+
 random.seed(42)
 np.random.seed(42)
 
-MODEL_DIR = os.path.join(os.path.dirname(__file__), "model")
 os.makedirs(MODEL_DIR, exist_ok=True)
 
 JOB_TITLES = [
@@ -320,7 +338,7 @@ def train(dataset: pd.DataFrame, model_dir=MODEL_DIR):
     X_text = dataset["text"].tolist()
     y = dataset["label"].values
 
-    tfidf = TfidfVectorizer(max_features=800, ngram_range=(1, 2), min_df=3,
+    tfidf = TfidfVectorizer(max_features=_TFIDF_MAX_FEATURES, ngram_range=_TFIDF_NGRAM_RANGE, min_df=3,
                              max_df=0.85, sublinear_tf=True)
     cleaned = [preprocess(t) for t in X_text]
     tfidf.fit(cleaned)
@@ -338,7 +356,7 @@ def train(dataset: pd.DataFrame, model_dir=MODEL_DIR):
     # subsample < 1 and a min_samples_leaf floor keep it from memorizing
     # incidental phrasing in a synthetic dataset.
     clf = GradientBoostingClassifier(
-        n_estimators=120, max_depth=3, learning_rate=0.08, subsample=0.8,
+        n_estimators=_GBC_N_ESTIMATORS, max_depth=_GBC_MAX_DEPTH, learning_rate=_GBC_LEARNING_RATE, subsample=0.8,
         min_samples_leaf=5, random_state=42
     )
     clf.fit(X_train, y_train)
@@ -346,8 +364,7 @@ def train(dataset: pd.DataFrame, model_dir=MODEL_DIR):
     preds = clf.predict(X_test)
     acc = accuracy_score(y_test, preds)
     report = classification_report(y_test, preds, target_names=["Genuine", "Fake"])
-    print(f"Validation accuracy: {acc:.4f}\n")
-    print(report)
+    logger.info("Validation accuracy: %.4f\n%s", acc, report)
 
     with open(os.path.join(model_dir, "classifier.pkl"), "wb") as f:
         pickle.dump(clf, f)
@@ -358,7 +375,7 @@ def train(dataset: pd.DataFrame, model_dir=MODEL_DIR):
     with open(os.path.join(model_dir, "meta.pkl"), "wb") as f:
         pickle.dump(meta, f)
 
-    print(f"\nSaved model artifacts to {model_dir}/")
+    logger.info("Saved model artifacts to %s/", model_dir)
     return clf, tfidf
 
 
@@ -370,11 +387,12 @@ if __name__ == "__main__":
                          help="Synthetic samples per class if no real dataset given")
     args = parser.parse_args()
 
+    logging.basicConfig(level=logging.INFO)
     if args.real and os.path.exists(args.real):
-        print(f"Loading real dataset from {args.real} ...")
+        logger.info("Loading real dataset from %s ...", args.real)
         df = load_real_dataset(args.real)
     else:
-        print("No real dataset supplied - generating balanced synthetic dataset...")
+        logger.info("No real dataset supplied - generating balanced synthetic dataset...")
         df = build_synthetic_dataset(n_per_class=args.n_per_class)
 
     train(df)
