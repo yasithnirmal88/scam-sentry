@@ -51,11 +51,12 @@ next steps.
 - **Scanners** (`scanner/`): RemoteOK, Remotive, Arbeitnow, Jobicy (all free
   public JSON APIs, no auth). Modular `BaseScanner` + registry — adding a
   source is one subclass.
-- **Storage** (`models/job.py`): SQLite; jobs upserted by normalized URL,
-  every scan recorded in `scan_history` with success/partial/failed status.
-  **Deploy note:** on Render's free tier the disk is ephemeral — this SQLite
-  file (and all scan history) is wiped on every deploy or restart. Treat it as
-  a cache, not durable storage.
+- **Storage** (`models/job.py` + `models/storage.py`): SQLite by default;
+  when `DATABASE_URL` is set, the same public API runs on Postgres (Render /
+  Neon / Supabase free tier). Jobs upsert by normalized URL and every scan is
+  recorded in `scan_history`. **Deploy note:** on Render's free tier the disk
+  is ephemeral — the local SQLite file (and all scan history) is wiped on
+  every deploy or restart. Set `DATABASE_URL` for durable storage.
 - **Scheduler** (`services/scheduler.py`): dependency-free background thread,
   every N hours; manual scans also run async so the web app never blocks.
 
@@ -205,6 +206,7 @@ See `.env.example`. Highlights:
 | `FLASK_DEBUG` | `false` | Never enable in production |
 | `LOG_LEVEL` | `INFO` | Python log level |
 | `SCAM_SENTRY_DB` | `scam_sentry.db` | SQLite file |
+| `DATABASE_URL` | *(empty)* | Postgres connection string. When set, it takes precedence over the SQLite file (Render/Neon/Supabase). Leave empty for local SQLite |
 | `SCAN_ENABLED` | `false` | Background scheduler on/off |
 | `SCAN_INTERVAL_HOURS` | `6` | Scheduler interval |
 | `SCAN_RUN_ON_STARTUP` | `true` | First scan shortly after boot |
@@ -223,6 +225,24 @@ See `.env.example`. Highlights:
 - Baseline security headers (`nosniff`, `SAMEORIGIN`, strict referrer).
 - This is a screening aid, not a verdict — always verify employers directly.
 
+## Deploy on Render (free tier, no Docker)
+
+`fakejob_app/` is the app root; `main` is the deploy branch.
+
+The free-tier web service has an **ephemeral disk**, so the SQLite file resets
+on every deploy or restart. For durable scan history, attach a free Postgres:
+
+1. Render Dashboard → **New → PostgreSQL** (free instance).
+2. Copy the **Internal Database URL** (the External URL works too for local
+   testing).
+3. In the web service → **Environment** → add the variable:
+   `DATABASE_URL=postgresql://<user>:<password>@<host>:5432/<dbname>?sslmode=require`
+4. Save + redeploy. The schema is created on first boot (idempotent), so there
+   is no manual migration step.
+
+Without `DATABASE_URL` the app falls back to `SCAM_SENTRY_DB`
+(`scam_sentry.db`) as before, which is fine for local development.
+
 ## Project structure
 
 ```
@@ -233,7 +253,8 @@ fakejob_app/
 ├── risk/                 # indicators, engine, llm_enhancer, verification, actions
 ├── scanner/              # base.py + remoteok/remotive/arbeitnow/jobicy
 ├── services/             # scanner_service, evaluation_service, scheduler
-├── models/job.py         # SQLite jobs + scan_history
+├── models/job.py         # public storage API (selects backend per call)
+├── models/storage.py     # SQLiteBackend + PostgresBackend
 ├── templates/            # index, dashboard, job_detail
 ├── static/               # style.css, script.js, dashboard.js
 ├── tests/                # pytest suite (140+ tests)

@@ -1,0 +1,435 @@
+"""
+models/storage.py
+-----------------
+Storage backends for job listings + scan history.
+
+Two interchangeable backends implement the same private interface:
+
+- ``SQLiteBackend``   : stdlib ``sqlite3`` (local default, file path).
+- ``PostgresBackend`` : ``psycopg`` 3 (used when ``DATABASE_URL`` is set —
+  Render / Neon / Supabase free Postgres).
+
+``models/job.py`` stays the public facade and picks a backend per call:
+an explicit ``db_path`` wins (a ``postgres://`` URL selects Postgres), then
+``DATABASE_URL``, then the local SQLite file. Postgres uses short-lived
+connections that are always closed; there is no cross-call connection state.
+"""
+
+from __future__ import annotations
+
+import json
+import sqlite3
+from contextlib import contextmanager
+from typing import Any, Iterator, Optional
+
+import config
+
+# Columns updated when a scan re-encounters a URL (posting fields are kept).
+_UPDATE_COLS = (
+    "title", "company", "location", "description", "raw_description",
+    "source", "posted_at", "overall_risk_level", "risk_categories",
+    "confidence", "key_indicators", "recommended_actions",
+    "employer_verification", "summary", "hybrid_score",
+    "rule_score", "ml_score", "scanned_at",
+)
+
+_JOB_COLS = (
+    "title", "company", "location", "description", "raw_description",
+    "url", "source", "posted_at", "overall_risk_level", "risk_categories",
+    "confidence", "key_indicators", "recommended_actions",
+    "employer_verification", "summary", "hybrid_score",
+    "rule_score", "ml_score", "scanned_at",
+)
+
+_SCAN_COLS = (
+    "started_at", "finished_at", "sources", "fetched", "evaluated",
+    "stored", "skipped", "duplicates", "status", "errors",
+)
+
+_LEVELS = {"low", "medium", "high", "critical"}
+
+
+def normalize_risk_level(risk_level: Optional[str]) -> Optional[str]:
+    if not risk_level:
+        return None
+    return risk_level.capitalize() if risk_level.lower() in _LEVELS else risk_level
+
+
+def coerce_limit(limit: Any, default: int = 50, hard_max: int = 200) -> int:
+    try:
+        return max(1, min(int(limit or default), hard_max))
+    except (TypeError, ValueError):
+        return default
+
+
+def coerce_offset(offset: Any) -> int:
+    try:
+        return max(0, int(offset or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def row_to_job(row: Any) -> dict[str, Any]:
+    """Normalize a DB row (sqlite3.Row or dict) into a job dict."""
+    d = dict(row)
+    for col in ("risk_categories", "key_indicators", "recommended_actions"):
+        try:
+            d[col] = json.loads(d.get(col) or "[]")
+        except (json.JSONDecodeError, TypeError):
+            d[col] = []
+    try:
+        d["employer_verification"] = json.loads(d.get("employer_verification") or "{}")
+    except (json.JSONDecodeError, TypeError):
+        d["employer_verification"] = {}
+    return d
+
+
+def row_to_scan(row: Any) -> dict[str, Any]:
+    d = dict(row)
+    for col, default in (("sources", []), ("errors", {})):
+        try:
+            d[col] = json.loads(d.get(col) or "null") or default
+        except (json.JSONDecodeError, TypeError):
+            d[col] = default
+    return d
+
+
+class _BaseBackend:
+    """Shared query-building; subclasses supply placeholder + LIKE dialect."""
+
+    _ph = ":{}"        # named-parameter template
+    _like = "LIKE"     # case sensitivity differs between engines
+
+    def _p(self, name: str) -> str:
+        return self._ph.format(name)
+
+    def _filters(self, risk_level: Optional[str], source: Optional[str],
+                 query: Optional[str]) -> tuple[str, dict[str, Any]]:
+        clauses: list[str] = []
+        params: dict[str, Any] = {}
+        rl = normalize_risk_level(risk_level)
+        if rl:
+            clauses.append("overall_risk_level = " + self._p("rl"))
+            params["rl"] = rl
+        if source:
+            clauses.append("source = " + self._p("src"))
+            params["src"] = source
+        if query:
+            p = self._p("q")
+            like = self._like
+            clauses.append(
+                f"(title {like} {p} OR company {like} {p} OR description {like} {p})"
+            )
+            params["q"] = f"%{query}%"
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        return where, params
+
+    def _list_sql(self, where: str) -> str:
+        return (f"SELECT * FROM jobs {where} "
+                f"ORDER BY scanned_at DESC, id DESC "
+                f"LIMIT {self._p('limit')} OFFSET {self._p('offset')}")
+
+    # interface -----------------------------------------------------------
+    def init(self) -> str:  # pragma: no cover - overridden
+        raise NotImplementedError
+
+    def save_job(self, payload: dict[str, Any]) -> int:  # pragma: no cover
+        raise NotImplementedError
+
+    def get_job(self, job_id: int) -> Optional[dict[str, Any]]:  # pragma: no cover
+        raise NotImplementedError
+
+    def list_jobs(self, risk_level, source, query, limit, offset) -> list[dict[str, Any]]:
+        where, params = self._filters(risk_level, source, query)
+        params["limit"] = coerce_limit(limit)
+        params["offset"] = coerce_offset(offset)
+        rows = self._fetch_all(self._list_sql(where), params)
+        return [row_to_job(r) for r in rows]
+
+    def count_jobs(self, risk_level: Optional[str]) -> int:
+        rl = normalize_risk_level(risk_level)
+        if rl:
+            row = self._fetch_one(
+                "SELECT COUNT(*) AS n FROM jobs WHERE overall_risk_level = "
+                + self._p("rl"), {"rl": rl})
+        else:
+            row = self._fetch_one("SELECT COUNT(*) AS n FROM jobs")
+        return int(row["n"]) if row else 0
+
+    def risk_counts(self) -> dict[str, int]:
+        rows = self._fetch_all(
+            "SELECT overall_risk_level, COUNT(*) AS n FROM jobs "
+            "GROUP BY overall_risk_level")
+        out = {"Low": 0, "Medium": 0, "High": 0, "Critical": 0}
+        for r in rows:
+            out[str(r["overall_risk_level"])] = int(r["n"])
+        out["total"] = sum(out.values())
+        return out
+
+    def get_last_scan(self) -> Optional[dict[str, Any]]:
+        try:
+            row = self._fetch_one(
+                "SELECT * FROM scan_history ORDER BY id DESC LIMIT 1")
+        except Exception:
+            return None
+        return row_to_scan(row) if row else None
+
+
+class SQLiteBackend(_BaseBackend):
+    _ph = ":{}"
+    _like = "LIKE"
+
+    SCHEMA = """
+CREATE TABLE IF NOT EXISTS jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL DEFAULT '',
+    company TEXT NOT NULL DEFAULT '',
+    location TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    raw_description TEXT NOT NULL DEFAULT '',
+    url TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT '',
+    posted_at TEXT NOT NULL DEFAULT '',
+    overall_risk_level TEXT NOT NULL DEFAULT 'Low',
+    risk_categories TEXT NOT NULL DEFAULT '[]',
+    confidence TEXT NOT NULL DEFAULT 'Low',
+    key_indicators TEXT NOT NULL DEFAULT '[]',
+    recommended_actions TEXT NOT NULL DEFAULT '[]',
+    employer_verification TEXT NOT NULL DEFAULT '{}',
+    summary TEXT NOT NULL DEFAULT '',
+    hybrid_score REAL NOT NULL DEFAULT 0.0,
+    rule_score REAL NOT NULL DEFAULT 0.0,
+    ml_score REAL NOT NULL DEFAULT 0.0,
+    scanned_at TEXT NOT NULL DEFAULT '',
+    UNIQUE(url)
+);
+CREATE INDEX IF NOT EXISTS idx_jobs_risk ON jobs(overall_risk_level);
+CREATE INDEX IF NOT EXISTS idx_jobs_source ON jobs(source);
+CREATE TABLE IF NOT EXISTS scan_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at TEXT NOT NULL DEFAULT '',
+    finished_at TEXT NOT NULL DEFAULT '',
+    sources TEXT NOT NULL DEFAULT '[]',
+    fetched INTEGER NOT NULL DEFAULT 0,
+    evaluated INTEGER NOT NULL DEFAULT 0,
+    stored INTEGER NOT NULL DEFAULT 0,
+    skipped INTEGER NOT NULL DEFAULT 0,
+    duplicates INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'unknown',
+    errors TEXT NOT NULL DEFAULT '{}'
+);
+"""
+
+    def __init__(self, path: str) -> None:
+        self.path = path
+
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
+        """Yield a connection and always close it.
+
+        sqlite3.Connection's own context manager commits/rolls back but does
+        *not* close the file handle, which leaks a connection (and an open fd)
+        on every call. This wrapper guarantees closure.
+
+        Note: unlike the raw sqlite3 connection context manager, this wrapper
+        does NOT commit. Every write path must call ``conn.commit()``
+        explicitly before the connection is closed on exit.
+        """
+        conn = sqlite3.connect(self.path)
+        conn.row_factory = sqlite3.Row
+        try:
+            yield conn
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def init(self) -> str:
+        with self._connect() as conn:
+            conn.executescript(self.SCHEMA)
+            conn.commit()
+        return self.path
+
+    def describe(self) -> str:
+        return f"sqlite:{self.path}"
+
+    def _fetch_one(self, sql: str, params: Any = None) -> Optional[sqlite3.Row]:
+        with self._connect() as conn:
+            return conn.execute(sql, params or {}).fetchone()
+
+    def _fetch_all(self, sql: str, params: Any = None) -> list[sqlite3.Row]:
+        with self._connect() as conn:
+            return conn.execute(sql, params or {}).fetchall()
+
+    def save_job(self, payload: dict[str, Any]) -> int:
+        cols = ", ".join(_JOB_COLS)
+        placeholders = ", ".join(self._p(c) for c in _JOB_COLS)
+        updates = ", ".join(f"{c}=excluded.{c}" for c in _UPDATE_COLS)
+        with self._connect() as conn:
+            cur = conn.execute(
+                f"INSERT INTO jobs ({cols}) VALUES ({placeholders}) "
+                f"ON CONFLICT(url) DO UPDATE SET {updates}",
+                payload,
+            )
+            conn.commit()
+            if cur.lastrowid:
+                return int(cur.lastrowid)
+            row = conn.execute(
+                "SELECT id FROM jobs WHERE url = " + self._p("url"),
+                {"url": payload["url"]}).fetchone()
+            return int(row["id"]) if row else 0
+
+    def get_job(self, job_id: int) -> Optional[dict[str, Any]]:
+        row = self._fetch_one(
+            "SELECT * FROM jobs WHERE id = " + self._p("id"), {"id": job_id})
+        return row_to_job(row) if row else None
+
+    def record_scan_run(self, payload: dict[str, Any]) -> int:
+        cols = ", ".join(_SCAN_COLS)
+        placeholders = ", ".join(self._p(c) for c in _SCAN_COLS)
+        with self._connect() as conn:
+            cur = conn.execute(
+                f"INSERT INTO scan_history ({cols}) VALUES ({placeholders})",
+                payload,
+            )
+            conn.commit()
+            return int(cur.lastrowid or 0)
+
+
+class PostgresBackend(_BaseBackend):
+    _ph = "%({})s"
+    _like = "ILIKE"
+
+    SCHEMA = """
+CREATE TABLE IF NOT EXISTS jobs (
+    id BIGSERIAL PRIMARY KEY,
+    title TEXT NOT NULL DEFAULT '',
+    company TEXT NOT NULL DEFAULT '',
+    location TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    raw_description TEXT NOT NULL DEFAULT '',
+    url TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT '',
+    posted_at TEXT NOT NULL DEFAULT '',
+    overall_risk_level TEXT NOT NULL DEFAULT 'Low',
+    risk_categories TEXT NOT NULL DEFAULT '[]',
+    confidence TEXT NOT NULL DEFAULT 'Low',
+    key_indicators TEXT NOT NULL DEFAULT '[]',
+    recommended_actions TEXT NOT NULL DEFAULT '[]',
+    employer_verification TEXT NOT NULL DEFAULT '{}',
+    summary TEXT NOT NULL DEFAULT '',
+    hybrid_score DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    rule_score DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    ml_score DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    scanned_at TEXT NOT NULL DEFAULT '',
+    UNIQUE (url)
+);
+CREATE INDEX IF NOT EXISTS idx_jobs_risk ON jobs (overall_risk_level);
+CREATE INDEX IF NOT EXISTS idx_jobs_source ON jobs (source);
+CREATE TABLE IF NOT EXISTS scan_history (
+    id BIGSERIAL PRIMARY KEY,
+    started_at TEXT NOT NULL DEFAULT '',
+    finished_at TEXT NOT NULL DEFAULT '',
+    sources TEXT NOT NULL DEFAULT '[]',
+    fetched INTEGER NOT NULL DEFAULT 0,
+    evaluated INTEGER NOT NULL DEFAULT 0,
+    stored INTEGER NOT NULL DEFAULT 0,
+    skipped INTEGER NOT NULL DEFAULT 0,
+    duplicates INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'unknown',
+    errors TEXT NOT NULL DEFAULT '{}'
+);
+"""
+
+    def __init__(self, url: str) -> None:
+        self.url = url
+
+    @contextmanager
+    def _connect(self) -> Iterator[Any]:
+        """Yield a short-lived psycopg connection, always closed."""
+        import psycopg
+        from psycopg.rows import dict_row
+
+        conn = psycopg.connect(self.url, row_factory=dict_row)
+        try:
+            yield conn
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def init(self) -> str:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(self.SCHEMA)
+            conn.commit()
+        return self.url
+
+    def describe(self) -> str:
+        return "postgres"
+
+    def reset(self) -> str:
+        """Drop and recreate the schema (tests / re-migration)."""
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DROP TABLE IF EXISTS jobs; "
+                            "DROP TABLE IF EXISTS scan_history;")
+            conn.commit()
+        return self.init()
+
+    def _fetch_one(self, sql: str, params: Any = None) -> Optional[dict[str, Any]]:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, params or {})
+                return cur.fetchone()
+
+    def _fetch_all(self, sql: str, params: Any = None) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, params or {})
+                return cur.fetchall()
+
+    def save_job(self, payload: dict[str, Any]) -> int:
+        cols = ", ".join(_JOB_COLS)
+        placeholders = ", ".join(self._p(c) for c in _JOB_COLS)
+        updates = ", ".join(f"{c}=EXCLUDED.{c}" for c in _UPDATE_COLS)
+        sql = (f"INSERT INTO jobs ({cols}) VALUES ({placeholders}) "
+               f"ON CONFLICT (url) DO UPDATE SET {updates} RETURNING id")
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, payload)
+                row = cur.fetchone()
+            conn.commit()
+        return int(row["id"]) if row else 0
+
+    def get_job(self, job_id: int) -> Optional[dict[str, Any]]:
+        row = self._fetch_one(
+            "SELECT * FROM jobs WHERE id = " + self._p("id"), {"id": job_id})
+        return row_to_job(row) if row else None
+
+    def record_scan_run(self, payload: dict[str, Any]) -> int:
+        cols = ", ".join(_SCAN_COLS)
+        placeholders = ", ".join(self._p(c) for c in _SCAN_COLS)
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"INSERT INTO scan_history ({cols}) VALUES ({placeholders}) "
+                    f"RETURNING id", payload)
+                row = cur.fetchone()
+            conn.commit()
+        return int(row["id"]) if row else 0
+
+
+def select_backend(db_path: Optional[str] = None) -> _BaseBackend:
+    """Pick a backend: explicit db_path wins, then DATABASE_URL, then SQLite."""
+    locator = (db_path or "").strip()
+    if locator:
+        if locator.startswith(("postgres://", "postgresql://")):
+            return PostgresBackend(locator)
+        return SQLiteBackend(locator)
+    url = (getattr(config, "DATABASE_URL", "") or "").strip()
+    if url:
+        return PostgresBackend(url)
+    return SQLiteBackend(config.DATABASE_PATH)
