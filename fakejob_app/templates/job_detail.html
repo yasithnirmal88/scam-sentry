@@ -52,7 +52,7 @@
             <span class="stamp-badge {{ 'fake' if job.overall_risk_level in ['Critical', 'High'] else 'genuine' }}">
               {{ {"Critical": "🚨 CRITICAL", "High": "🔴 HIGH", "Medium": "🟡 MEDIUM", "Low": "🟢 LOW"}.get(job.overall_risk_level, job.overall_risk_level) }}
             </span>
-            <span class="risk-pill {{ 'HIGH' if job.overall_risk_level in ['Critical', 'High'] else job.overall_risk_level.upper() }}">{{ job.confidence }} confidence</span>
+            <span class="risk-pill {{ job.overall_risk_level.upper() }}">{{ job.confidence }} confidence</span>
           </div>
           <h2 style="margin:10px 0 4px">{{ job.title }}</h2>
           <p class="score-sub-label">{{ job.company }}{% if job.location %} &bull; {{ job.location }}{% endif %}</p>

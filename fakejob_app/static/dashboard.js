@@ -15,6 +15,26 @@ const scanStatus = document.getElementById("scan-status");
 const scanBtn = document.getElementById("btn-scan");
 const scanLabel = document.getElementById("btn-scan-label");
 
+function setScanning(active) {
+  scanBtn.disabled = active;
+  scanLabel.textContent = active ? "Scanning…" : "Run New Scan";
+  let bar = document.getElementById("scan-progress");
+  if (active && !bar) {
+    bar = document.createElement("div");
+    bar.className = "scan-progress";
+    bar.id = "scan-progress";
+    bar.innerHTML = "<div></div>";
+    scanStatus.after(bar);
+  } else if (!active && bar) {
+    bar.remove();
+  }
+}
+
+function dismissWelcomeIfJobs() {
+  const welcome = document.getElementById("welcome-banner");
+  if (welcome && state.jobs.length > 0) welcome.remove();
+}
+
 function escapeHtml(str) {
   const div = document.createElement("div");
   div.textContent = str || "";
@@ -22,7 +42,7 @@ function escapeHtml(str) {
 }
 
 function pillClass(level) {
-  return level === "Critical" ? "HIGH" : (level || "Low").toUpperCase();
+  return (level || "Low").toUpperCase();
 }
 
 function jobCard(job) {
@@ -132,6 +152,7 @@ async function loadJobs() {
     const totalEl = document.getElementById("total-jobs");
     if (totalEl && data.total != null) totalEl.textContent = data.total;
     render();
+    dismissWelcomeIfJobs();
   } catch (err) {
     errorBox.hidden = false;
     errorBox.textContent = "Could not load scanned jobs. Is the backend running?";
@@ -181,14 +202,12 @@ document.querySelectorAll(".dash-count").forEach((card) => {
 });
 
 // Scan trigger (async: POST returns 202, then poll status until idle)
-scanBtn.addEventListener("click", async () => {
-  const sources = selectedSources();
+async function startScan(sources) {
   if (sources.length === 0) {
     scanStatus.textContent = "Select at least one source first.";
     return;
   }
-  scanBtn.disabled = true;
-  scanLabel.textContent = "Scanning…";
+  setScanning(true);
   scanStatus.textContent = `Scanning ${sources.join(", ")} — fetching, evaluating, storing…`;
   errorBox.hidden = true;
   try {
@@ -198,6 +217,11 @@ scanBtn.addEventListener("click", async () => {
       body: JSON.stringify({ sources, limit: 20 }),
     });
     const data = await res.json();
+    if (res.status === 409) {
+      scanStatus.textContent = "A scan is already running — results will appear below when it finishes.";
+      await pollUntilIdle();
+      return;
+    }
     if (!res.ok && res.status !== 202) throw new Error(data.error || data.reason || "Scan failed");
     if (res.status === 202 || data.status === "running") {
       await pollUntilIdle();
@@ -208,13 +232,22 @@ scanBtn.addEventListener("click", async () => {
     }
   } catch (err) {
     errorBox.hidden = false;
-    errorBox.textContent = err.message || "Scan failed.";
+    errorBox.textContent = err.message || "Scan failed. Check your connection and try again.";
     scanStatus.textContent = "Scan failed — see error above.";
   } finally {
-    scanBtn.disabled = false;
-    scanLabel.textContent = "Run New Scan";
+    setScanning(false);
   }
-});
+}
+
+scanBtn.addEventListener("click", () => startScan(selectedSources()));
+
+const firstScanBtn = document.getElementById("btn-first-scan");
+if (firstScanBtn) {
+  firstScanBtn.addEventListener("click", () => {
+    document.querySelector(".dash-controls").scrollIntoView({ behavior: "smooth", block: "center" });
+    startScan(selectedSources());
+  });
+}
 
 async function pollUntilIdle() {
   for (let i = 0; i < 120; i++) {

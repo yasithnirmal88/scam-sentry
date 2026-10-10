@@ -60,6 +60,20 @@ logger = logging.getLogger("scam_sentry")
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
 
+
+@app.after_request
+def _security_headers(response):
+    """Baseline hardening headers (no auth in this app; keep clickjacking/MIME off)."""
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    return response
+
+
+@app.errorhandler(413)
+def _file_too_large(_exc):
+    return jsonify({"error": "File is too large. Please upload a file under 10 MB."}), 413
+
 _clf = None
 _tfidf = None
 
