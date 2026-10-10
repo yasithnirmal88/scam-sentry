@@ -59,6 +59,22 @@
       <div class="metric-card"><div class="metric-label">Last Scan Status</div><div class="metric-val" id="last-scan-status">{% if last_scan %}{{ last_scan.status }}{% else %}—{% endif %}</div><div class="metric-meta">success / partial / failed</div></div>
     </div>
 
+    <!-- First-run welcome (shown only when the database is empty) -->
+    {% if total == 0 %}
+    <section class="card welcome-banner" id="welcome-banner">
+      <h2>👋 Welcome to the Job Risk Scanner</h2>
+      <p>No jobs have been scanned yet. Run your first scan to pull live listings from public job boards — every posting is automatically evaluated by the Risk Engine and grouped below by risk level.</p>
+      <div class="welcome-steps">
+        <span>1 &bull; Pick sources</span>
+        <span>2 &bull; Run scan</span>
+        <span>3 &bull; Review by risk level</span>
+      </div>
+      <button type="button" class="btn-primary" id="btn-first-scan">
+        <span>Run Your First Scan</span>
+      </button>
+    </section>
+    {% endif %}
+
     <!-- Risk counts -->
     <div class="metrics-grid dash-counts">
       <div class="metric-card dash-count" data-level="Critical"><div class="metric-label">🚨 Critical</div><div class="metric-val" id="count-critical">{{ counts.get('Critical', 0) }}</div><div class="metric-meta">immediate danger signals</div></div>

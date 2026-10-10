@@ -47,7 +47,6 @@ def main(argv: list[str] | None = None) -> int:
     limit = max(1, min(args.limit, 100))
     if args.daemon:
         import time
-        from services import scheduler
         from services.scanner_service import run_scan
         logger.info("Daemon mode: scan every %.2fh", args.interval_hours)
         try:
