@@ -44,7 +44,10 @@ def evaluate_job(title: str, company: str, location: str, description: str,
     metadata = {"posted_at": posted_at} if posted_at else None
     try:
         from app import classify  # deferred: app imports services, not vice versa
-        result = classify(combined, posted_at=posted_at)
+        # Scanned listings stay zero-token unless explicitly opted in; the
+        # LLM enhancement layer is for on-demand single-job analysis.
+        result = classify(combined, posted_at=posted_at,
+                          use_llm=config.LLM_SCANNER_ENABLED)
         if "error" in result:
             raise ValueError(result["error"])
         return result

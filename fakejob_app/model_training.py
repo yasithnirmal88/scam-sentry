@@ -58,7 +58,7 @@ try:
     _GBC_MAX_DEPTH = config.GBC_MAX_DEPTH
     _GBC_LEARNING_RATE = config.GBC_LEARNING_RATE
 except ImportError:  # standalone script use without config on path
-    MODEL_DIR = os.path.join(os.path.dirname(__file__), "model")
+    MODEL_DIR = os.path.join(os.path.dirname(__file__), "artifacts")
     _TFIDF_MAX_FEATURES = 800
     _TFIDF_NGRAM_RANGE = (1, 2)
     _GBC_N_ESTIMATORS = 120
