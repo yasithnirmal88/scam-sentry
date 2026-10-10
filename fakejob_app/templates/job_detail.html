@@ -78,7 +78,7 @@
       <div class="metrics-grid">
         <div class="metric-card"><div class="metric-label">Hybrid Score</div><div class="metric-val">{{ (job.hybrid_score * 100) | round(1) }}%</div><div class="metric-meta">supporting signal</div></div>
         <div class="metric-card"><div class="metric-label">Rule Score</div><div class="metric-val">{{ (job.rule_score * 100) | round(1) }}%</div><div class="metric-meta">indicator weight</div></div>
-        <div class="metric-card"><div class="metric-label">ML Probability</div><div class="metric-val">{{ (job.ml_score * 100) | round(1) }}%</div><div class="metric-meta">GradientBoosting</div></div>
+        <div class="metric-card"><div class="metric-label">ML Probability</div><div class="metric-val">{{ (job.ml_score * 100) | round(1) }}%</div><div class="metric-meta">synthetic-trained &middot; supporting signal</div></div>
         <div class="metric-card"><div class="metric-label">Scanned At</div><div class="metric-val truncate">{{ job.scanned_at[:10] if job.scanned_at else "—" }}</div><div class="metric-meta">{{ job.source or "" }}</div></div>
       </div>
 

@@ -43,7 +43,7 @@ import fraud_features
 from fraud_features import extract_all_features, FEATURE_KEYS
 from text_processing import preprocess
 from ocr_utils import extract_text
-from model_training import build_synthetic_dataset, train
+from model_training import build_synthetic_dataset, load_model_metadata, train
 from risk.indicators import analyze_indicators
 from risk.engine import assess_risk, has_critical
 from risk.verification import verify_employer
@@ -176,6 +176,26 @@ def vectorize(text):
     return combined, result
 
 
+def _ml_note():
+    """One honest sentence about where the ML probability comes from."""
+    meta = load_model_metadata()
+    if not meta.get("available"):
+        return ("The ML probability is a supporting signal only; the verdict "
+                "is set by the deterministic Risk Engine.")
+    source = "synthetic training data"
+    if meta.get("source") == "real":
+        source = "a real dataset"
+    acc = meta.get("validation_accuracy")
+    acc_str = f"{acc * 100:.1f}%" if acc is not None else "n/a"
+    estimator = meta.get("estimator") or "GradientBoosting"
+    return (
+        f"ML probability comes from a {estimator} model trained on {source} "
+        f"(n_samples={meta.get('n_samples', '?')}, validation accuracy "
+        f"{acc_str}); the verdict is set by the deterministic Risk Engine and "
+        f"the ML output is a supporting signal only."
+    )
+
+
 def classify(text, posted_at=None, use_llm=None):
     """Full risk report for one posting.
 
@@ -195,7 +215,16 @@ def classify(text, posted_at=None, use_llm=None):
 
     _ensure_model()
     X, rule_result = vectorize(text)
-    ml_proba_fake = float(_clf.predict_proba(X)[0][1]) * 100  # 0-100
+    # ML honesty (Phase 4): GradientBoosting predict_proba is over-confident,
+    # and this model is trained on a synthetic set. Shrink the raw probability
+    # toward a neutral prior so the ML signal never overstates itself, and
+    # expose the raw value + provenance for transparency. The rule engine sets
+    # the verdict regardless.
+    raw_ml_100 = float(_clf.predict_proba(X)[0][1]) * 100  # 0-100, raw
+    cal_prior = config.ML_CALIBRATION_PRIOR * 100
+    ml_proba_fake = raw_ml_100
+    if config.ML_CALIBRATION:
+        ml_proba_fake = cal_prior + (raw_ml_100 - cal_prior) * config.ML_CALIBRATION_SHRINK
 
     rule_score = rule_result["rule_score"]  # 0-100, transparent
 
@@ -306,6 +335,13 @@ def classify(text, posted_at=None, use_llm=None):
         "hybrid_score": hybrid_01,
         "rule_score": rule_01,
         "ml_score": ml_01,
+        "ml_raw_probability": round(raw_ml_100, 1),
+        "ml_note": _ml_note(),
+        "calibration": {
+            "applied": bool(config.ML_CALIBRATION),
+            "prior": config.ML_CALIBRATION_PRIOR,
+            "shrink": config.ML_CALIBRATION_SHRINK,
+        },
         "raw_text_preview": text[:800],
         # Backward-compatible fields.
         "prediction": prediction,
@@ -367,7 +403,25 @@ def analyze_file():
 
 @app.route("/api/health")
 def health():
-    return jsonify({"status": "ok", "model_loaded": _clf is not None})
+    return jsonify({
+        "status": "ok",
+        "model_loaded": _clf is not None,
+        "model": _health_model_info(),
+    })
+
+
+def _health_model_info():
+    """Model provenance for /api/health (never raises)."""
+    meta = load_model_metadata()
+    return {
+        "available": meta.get("available", False),
+        "source": meta.get("source"),
+        "estimator": meta.get("estimator"),
+        "n_samples": meta.get("n_samples"),
+        "n_features": meta.get("n_features"),
+        "validation_accuracy": meta.get("validation_accuracy"),
+        "trained_at_utc": meta.get("trained_at_utc"),
+    }
 
 # ---------------------------------------------------------------------------
 # Job Risk Scanner API (Phase 1)

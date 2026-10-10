@@ -32,9 +32,11 @@ TO USE THE REAL KAGGLE DATASET INSTEAD:
 import argparse
 import logging
 import os
+import pickle
 import random
 import re
-import pickle
+from datetime import datetime, timezone
+from functools import lru_cache
 
 logger = logging.getLogger(__name__)
 
@@ -333,7 +335,7 @@ def build_feature_matrix(texts, tfidf: TfidfVectorizer, fit=False):
     return combined
 
 
-def train(dataset: pd.DataFrame, model_dir=MODEL_DIR):
+def train(dataset: pd.DataFrame, model_dir=MODEL_DIR, source="synthetic"):
     X_text = dataset["text"].tolist()
     y = dataset["label"].values
 
@@ -370,12 +372,47 @@ def train(dataset: pd.DataFrame, model_dir=MODEL_DIR):
     with open(os.path.join(model_dir, "tfidf.pkl"), "wb") as f:
         pickle.dump(tfidf, f)
 
-    meta = {"accuracy": acc, "n_samples": len(dataset)}
+    meta = {
+        "source": source,
+        "estimator": "GradientBoostingClassifier",
+        "n_samples": len(dataset),
+        "n_features": int(X.shape[1]),
+        "validation_accuracy": float(acc),
+        "trained_at_utc": datetime.now(timezone.utc).isoformat(),
+        "n_estimators": _GBC_N_ESTIMATORS,
+        "max_depth": _GBC_MAX_DEPTH,
+        "learning_rate": _GBC_LEARNING_RATE,
+    }
     with open(os.path.join(model_dir, "meta.pkl"), "wb") as f:
         pickle.dump(meta, f)
 
     logger.info("Saved model artifacts to %s/", model_dir)
     return clf, tfidf
+
+
+@lru_cache(maxsize=1)
+def load_model_metadata(model_dir=MODEL_DIR):
+    """Model provenance for honest labeling. Never raises; reports absence."""
+    base = {
+        "available": False,
+        "source": "unknown",
+        "estimator": "unknown",
+        "n_samples": 0,
+        "n_features": 0,
+        "validation_accuracy": None,
+        "trained_at_utc": None,
+    }
+    path = os.path.join(model_dir, "meta.pkl")
+    if not os.path.exists(path):
+        return base
+    try:
+        with open(path, "rb") as f:
+            meta = pickle.load(f)
+        base.update({k: v for k, v in meta.items() if k in base})
+        base["available"] = True
+        return base
+    except Exception:
+        return base
 
 
 if __name__ == "__main__":
@@ -390,8 +427,8 @@ if __name__ == "__main__":
     if args.real and os.path.exists(args.real):
         logger.info("Loading real dataset from %s ...", args.real)
         df = load_real_dataset(args.real)
+        train(df, source="real")
     else:
         logger.info("No real dataset supplied - generating balanced synthetic dataset...")
         df = build_synthetic_dataset(n_per_class=args.n_per_class)
-
-    train(df)
+        train(df, source="synthetic")
