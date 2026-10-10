@@ -10,10 +10,7 @@ from __future__ import annotations
 
 import logging
 
-import requests
-
-import config
-from .base import BaseScanner, NormalizedJob, clean_html, register
+from .base import BaseScanner, NormalizedJob, clean_html, http_get, register
 
 logger = logging.getLogger("scam_sentry.scanner.remotive")
 
@@ -25,13 +22,8 @@ class RemotiveScanner(BaseScanner):
     name = "remotive"
 
     def fetch(self, limit: int = 20) -> list[NormalizedJob]:
-        resp = requests.get(
-            API_URL,
-            params={"limit": max(1, min(limit, 100))},
-            headers={"User-Agent": config.SCANNER_USER_AGENT, "Accept": "application/json"},
-            timeout=self.timeout,
-        )
-        resp.raise_for_status()
+        resp = http_get(API_URL, params={"limit": max(1, min(limit, 100))},
+                        timeout=self.timeout)
         payload = resp.json()
         items = payload.get("jobs", []) if isinstance(payload, dict) else []
         jobs: list[NormalizedJob] = []

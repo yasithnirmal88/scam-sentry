@@ -13,6 +13,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import config
+
 logger = logging.getLogger("scam_sentry.evaluation")
 
 
@@ -26,10 +28,19 @@ def evaluate_text(text: str) -> dict[str, Any]:
 
 
 def evaluate_job(title: str, company: str, location: str, description: str) -> dict[str, Any]:
-    """Risk result for a scanned listing. Falls back to rule-only on ML failure."""
+    """Risk result for a scanned listing. Falls back to rule-only on ML failure.
+
+    Raises ValueError when there is too little text — callers skip such jobs
+    instead of storing a meaningless report.
+    """
     combined = "\n".join(p for p in (title, company, location, description) if p)
+    if not combined or len(combined.strip()) < config.MIN_TEXT_LENGTH:
+        raise ValueError("Not enough text was found to analyse. "
+                         "Skipping this listing.")
     try:
         return evaluate_text(combined)
+    except ValueError:
+        raise
     except Exception as exc:
         logger.warning("ML-backed classify failed (%s); using rule-only risk engine", exc)
         from risk.actions import generate_actions

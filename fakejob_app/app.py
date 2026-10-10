@@ -277,7 +277,12 @@ def api_get_job(job_id):
 
 @app.route("/api/scan", methods=["POST"])
 def api_trigger_scan():
-    """Trigger a scan manually. Body (JSON, optional): {sources: [...], limit: N}."""
+    """Trigger a scan manually. Body (JSON, optional): {sources: [...], limit: N}.
+
+    Runs in a background thread (202) so the web app never blocks.
+    Pass ?sync=1 (or {"sync": true}) to wait for completion instead.
+    """
+    from services import scheduler
     from services.scanner_service import run_scan
 
     data = request.get_json(silent=True) or {}
@@ -290,13 +295,32 @@ def api_trigger_scan():
     unknown = [s for s in sources if s not in list_sources()]
     if unknown:
         return jsonify({"error": f"Unknown sources: {unknown}. Available: {list_sources()}"}), 400
+
+    sync = request.args.get("sync") == "1" or data.get("sync") is True
+    if sync:
+        try:
+            summary = run_scan(sources=sources, limit_per_source=limit)
+        except Exception as exc:
+            logger.exception("Scan failed")
+            return jsonify({"error": f"Scan failed: {exc}"}), 500
+        summary["counts"] = risk_counts()
+        return jsonify(summary)
+
+    result = scheduler.trigger_async(sources=sources, limit=limit)
+    if not result.get("accepted"):
+        return jsonify(result), 409
+    return jsonify(result), 202
+
+
+@app.route("/api/scan/status", methods=["GET"])
+def api_scan_status():
+    """Current scan state (running/idle) + last recorded run."""
+    from services import scheduler
     try:
-        summary = run_scan(sources=sources, limit_per_source=limit)
+        return jsonify(scheduler.get_status())
     except Exception as exc:
-        logger.exception("Scan failed")
-        return jsonify({"error": f"Scan failed: {exc}"}), 500
-    summary["counts"] = risk_counts()
-    return jsonify(summary)
+        logger.exception("Failed to get scan status")
+        return jsonify({"error": f"Could not get scan status: {exc}"}), 500
 
 
 @app.route("/api/sources", methods=["GET"])
@@ -311,11 +335,17 @@ def api_list_sources():
 @app.route("/dashboard", methods=["GET"])
 def dashboard():
     """Dashboard home: jobs grouped by risk level + scan controls."""
+    from models.job import get_last_scan
     try:
         counts = risk_counts()
     except Exception:
         counts = {"Low": 0, "Medium": 0, "High": 0, "Critical": 0, "total": 0}
-    return render_template("dashboard.html", counts=counts, sources=list_sources())
+    try:
+        last_scan = get_last_scan()
+    except Exception:
+        last_scan = None
+    return render_template("dashboard.html", counts=counts, sources=list_sources(),
+                           last_scan=last_scan, total=counts.get("total", 0))
 
 
 @app.route("/dashboard/jobs/<int:job_id>", methods=["GET"])
@@ -344,6 +374,14 @@ try:
     init_db()
 except Exception as exc:
     logger.warning("Could not initialise job database: %s", exc)
+
+# Automatic scheduled scanning (Phase 3). Background daemon thread, so the
+# web app never blocks. Skipped in the Werkzeug reloader parent process to
+# avoid double-scheduling during development.
+if config.SCAN_ENABLED and (not config.FLASK_DEBUG
+                            or os.environ.get("WERKZEUG_RUN_MAIN") == "true"):
+    from services import scheduler
+    scheduler.start_background()
 
 if __name__ == "__main__":
     app.run(host=config.FLASK_HOST, port=config.FLASK_PORT, debug=config.FLASK_DEBUG)

@@ -1194,6 +1194,9 @@ textarea::placeholder {
 .dash-counts {
   margin-bottom: 18px;
 }
+.dash-status {
+  margin-bottom: 18px;
+}
 .dash-count {
   cursor: pointer;
   transition: transform 0.15s ease, border-color 0.15s ease;
