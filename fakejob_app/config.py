@@ -49,6 +49,10 @@ LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 # Job Risk Scanner (Phase 1).
 DATABASE_PATH = os.getenv("SCAM_SENTRY_DB", os.path.join(APP_DIR, "scam_sentry.db"))
+# Persistent storage backend. When DATABASE_URL is set (Render / Neon /
+# Supabase Postgres), it is used instead of the local SQLite file. Empty =
+# SQLite (the local default).
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 SCANNER_TIMEOUT = int(os.getenv("SCANNER_TIMEOUT", "20"))
 SCANNER_DEFAULT_LIMIT = int(os.getenv("SCANNER_LIMIT", "20"))
 SCANNER_USER_AGENT = os.getenv("SCANNER_USER_AGENT", "ScamSentry/1.0 (+job-risk-research)")
