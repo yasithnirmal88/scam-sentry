@@ -229,7 +229,11 @@ See `.env.example`. Highlights:
 - **Scan trigger is private.** `POST /api/scan` requires an `X-Scan-Token`
   header whose value matches `SCAN_API_TOKEN` — otherwise `401`. When
   `SCAN_API_TOKEN` is unset the endpoint rejects everyone (safe default), so
-  only the owner who sets the token can spend scan time.
+  only the owner who sets the token can spend scan time. The dashboard has a
+  token field (persisted in the browser's `localStorage`) so an operator can
+  run scans from the UI; a token entered on a *public* dashboard page is
+  visible to anyone who can open that page, so gate the dashboard itself on
+  a public deployment rather than shipping the token to the world.
 - **Per-IP rate limiting** on the costliest endpoints (`/api/analyze/text`,
   `/api/analyze/file`, and `/api/scan`) via Flask-Limiter. Defaults:
   `RATE_LIMIT_ANALYZE=30/minute`, `RATE_LIMIT_SCAN=5/minute`; over the limit
