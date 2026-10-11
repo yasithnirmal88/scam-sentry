@@ -93,6 +93,10 @@ def test_dashboard_pages_carry_phase5_markup(history_client):
     # No token entry UI on the dashboard: scans run without a token by design.
     assert "scan-token-input" not in dash
     assert "X-Scan-Token" not in dash
+    # Industry + job-role search sections for targeted applications.
+    assert "Search by Industry" in dash
+    assert 'id="filter-industry"' in dash
+    assert 'id="filter-role"' in dash
 
     home = history_client.get("/").get_data(as_text=True)
     assert "How the ML probability is derived" in home
@@ -120,3 +124,16 @@ def test_job_detail_carries_ml_honesty_note(history_client):
         "/dashboard/jobs/1").get_data(as_text=True)
     assert "synthetic-trained" in html
     assert "deterministic Risk Engine" in html
+
+
+def test_job_detail_shows_industry_role_chips(history_client):
+    from models.job import JobRecord, save_job
+
+    save_job(JobRecord(
+        url="https://example.com/ux-2", title="Senior Software Engineer",
+        overall_risk_level="Low", industry="Technology & IT",
+        job_role="Software Engineer"))
+    html = history_client.get(
+        "/dashboard/jobs/1").get_data(as_text=True)
+    assert "Industry: Technology &amp; IT" in html or "Technology & IT" in html
+    assert "Role: Software Engineer" in html

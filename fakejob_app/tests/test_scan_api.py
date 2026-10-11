@@ -85,3 +85,60 @@ def test_single_job_analysis_still_works(api_client):
                 "Salary 100000 USD. Apply via official portal."})
     assert res.status_code == 200
     assert res.get_json()["overall_risk_level"] in ("Low", "Medium", "High", "Critical")
+
+
+def test_scan_classifies_industry_and_role(api_client, monkeypatch):
+    import services.scanner_service as svc
+
+    fake_jobs = [NormalizedJob(
+        title="Senior Software Engineer", company="Acme", location="Remote",
+        description="Build and maintain web applications using Python and APIs.",
+        url="https://example.com/swe", source="remoteok", posted_at="2026-01-01")]
+
+    class FakeScanner:
+        name = "remoteok"
+
+        def safe_fetch(self, limit=20):
+            return fake_jobs
+
+    monkeypatch.setattr(svc, "get_scanner", lambda name, **k: FakeScanner())
+    res = api_client.post("/api/scan?sync=1",
+                          json={"sources": ["remoteok"], "limit": 5},
+                          headers={"X-Scan-Token": "test-token"})
+    assert res.status_code == 200
+    jobs = api_client.get("/api/jobs").get_json()["jobs"]
+    assert len(jobs) == 1
+    assert jobs[0]["industry"] == "Technology & IT"
+    assert jobs[0]["job_role"] == "Software Engineer"
+
+
+def test_list_jobs_industry_role_filters(api_client):
+    tech = _seed()
+    health = save_job(JobRecord(
+        title="Registered Nurse", company="Care", location="Remote",
+        description="Deliver compassionate care. Requirements: Nursing license.",
+        url="https://example.com/health", source="remoteok",
+        overall_risk_level="Low", industry="Healthcare",
+        job_role="Registered Nurse"))
+    assert tech > 0 and health > 0
+    body = api_client.get("/api/jobs", query_string={
+        "industry": "Healthcare"}).get_json()
+    assert [j["id"] for j in body["jobs"]] == [health]
+    body = api_client.get("/api/jobs", query_string={
+        "industry": "Healthcare", "role": "Registered Nurse"}).get_json()
+    assert [j["id"] for j in body["jobs"]] == [health]
+    body = api_client.get("/api/jobs", query_string={
+        "industry": "Healthcare", "role": "Software Engineer"}).get_json()
+    assert body["jobs"] == []
+    body = api_client.get("/api/jobs", query_string={"role": "Registered Nurse"}).get_json()
+    assert [j["id"] for j in body["jobs"]] == [health]
+
+
+def test_taxonomy_endpoint(api_client):
+    body = api_client.get("/api/taxonomy")
+    assert body.status_code == 200
+    industries = body.get_json()["industries"]
+    assert "Technology & IT" in industries
+    assert "Software Engineer" in industries["Technology & IT"]
+    assert "Healthcare" in industries
+    assert len(industries) >= 15

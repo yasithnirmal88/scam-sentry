@@ -30,7 +30,7 @@ _UPDATE_COLS = (
     "source", "posted_at", "overall_risk_level", "risk_categories",
     "confidence", "key_indicators", "recommended_actions",
     "employer_verification", "summary", "hybrid_score",
-    "rule_score", "ml_score", "scanned_at",
+    "rule_score", "ml_score", "industry", "job_role", "scanned_at",
 )
 
 _JOB_COLS = (
@@ -38,7 +38,14 @@ _JOB_COLS = (
     "url", "source", "posted_at", "overall_risk_level", "risk_categories",
     "confidence", "key_indicators", "recommended_actions",
     "employer_verification", "summary", "hybrid_score",
-    "rule_score", "ml_score", "scanned_at",
+    "rule_score", "ml_score", "industry", "job_role", "scanned_at",
+)
+
+# Lift an older jobs table (created before the industry/role feature) up to
+# the current schema. idempotent on SQLite via the PRAGMA check in init().
+_MIGRATE_COLUMNS = (
+    ("industry", "ALTER TABLE jobs ADD COLUMN industry TEXT NOT NULL DEFAULT 'Other'"),
+    ("job_role", "ALTER TABLE jobs ADD COLUMN job_role TEXT NOT NULL DEFAULT 'Other'"),
 )
 
 _SCAN_COLS = (
@@ -104,7 +111,8 @@ class _BaseBackend:
         return self._ph.format(name)
 
     def _filters(self, risk_level: Optional[str], source: Optional[str],
-                 query: Optional[str]) -> tuple[str, dict[str, Any]]:
+                 query: Optional[str], industry: Optional[str] = None,
+                 role: Optional[str] = None) -> tuple[str, dict[str, Any]]:
         clauses: list[str] = []
         params: dict[str, Any] = {}
         rl = normalize_risk_level(risk_level)
@@ -114,6 +122,14 @@ class _BaseBackend:
         if source:
             clauses.append("source = " + self._p("src"))
             params["src"] = source
+        industry = (industry or "").strip()
+        if industry:
+            clauses.append("industry = " + self._p("ind"))
+            params["ind"] = industry
+        role = (role or "").strip()
+        if role:
+            clauses.append("job_role = " + self._p("role"))
+            params["role"] = role
         if query:
             p = self._p("q")
             like = self._like
@@ -139,8 +155,9 @@ class _BaseBackend:
     def get_job(self, job_id: int) -> Optional[dict[str, Any]]:  # pragma: no cover
         raise NotImplementedError
 
-    def list_jobs(self, risk_level, source, query, limit, offset) -> list[dict[str, Any]]:
-        where, params = self._filters(risk_level, source, query)
+    def list_jobs(self, risk_level, source, query, limit, offset,
+                  industry=None, role=None) -> list[dict[str, Any]]:
+        where, params = self._filters(risk_level, source, query, industry, role)
         params["limit"] = coerce_limit(limit)
         params["offset"] = coerce_offset(offset)
         rows = self._fetch_all(self._list_sql(where), params)
@@ -211,11 +228,15 @@ CREATE TABLE IF NOT EXISTS jobs (
     hybrid_score REAL NOT NULL DEFAULT 0.0,
     rule_score REAL NOT NULL DEFAULT 0.0,
     ml_score REAL NOT NULL DEFAULT 0.0,
+    industry TEXT NOT NULL DEFAULT 'Other',
+    job_role TEXT NOT NULL DEFAULT 'Other',
     scanned_at TEXT NOT NULL DEFAULT '',
     UNIQUE(url)
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_risk ON jobs(overall_risk_level);
 CREATE INDEX IF NOT EXISTS idx_jobs_source ON jobs(source);
+CREATE INDEX IF NOT EXISTS idx_jobs_industry ON jobs(industry);
+CREATE INDEX IF NOT EXISTS idx_jobs_role ON jobs(job_role);
 CREATE TABLE IF NOT EXISTS scan_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     started_at TEXT NOT NULL DEFAULT '',
@@ -258,9 +279,26 @@ CREATE TABLE IF NOT EXISTS scan_history (
 
     def init(self) -> str:
         with self._connect() as conn:
+            # Lift a pre-existing jobs table up first so the SCHEMA script's
+            # new indexes on industry/job_role can be created (SQLite has no
+            # ALTER ... ADD COLUMN IF NOT EXISTS, hence the PRAGMA check).
+            self._ensure_columns(conn)
             conn.executescript(self.SCHEMA)
             conn.commit()
         return self.path
+
+    @staticmethod
+    def _ensure_columns(conn: sqlite3.Connection) -> None:
+        """Add industry/job_role to a pre-existing jobs table (older DBs)."""
+        has_table = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='jobs'"
+        ).fetchone()
+        if not has_table:
+            return
+        existing = {row["name"] for row in conn.execute("PRAGMA table_info(jobs)")}
+        for name, ddl in _MIGRATE_COLUMNS:
+            if name not in existing:
+                conn.execute(ddl)
 
     def describe(self) -> str:
         return f"sqlite:{self.path}"
@@ -333,11 +371,15 @@ CREATE TABLE IF NOT EXISTS jobs (
     hybrid_score DOUBLE PRECISION NOT NULL DEFAULT 0.0,
     rule_score DOUBLE PRECISION NOT NULL DEFAULT 0.0,
     ml_score DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    industry TEXT NOT NULL DEFAULT 'Other',
+    job_role TEXT NOT NULL DEFAULT 'Other',
     scanned_at TEXT NOT NULL DEFAULT '',
     UNIQUE (url)
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_risk ON jobs (overall_risk_level);
 CREATE INDEX IF NOT EXISTS idx_jobs_source ON jobs (source);
+CREATE INDEX IF NOT EXISTS idx_jobs_industry ON jobs (industry);
+CREATE INDEX IF NOT EXISTS idx_jobs_role ON jobs (job_role);
 CREATE TABLE IF NOT EXISTS scan_history (
     id BIGSERIAL PRIMARY KEY,
     started_at TEXT NOT NULL DEFAULT '',
@@ -375,6 +417,12 @@ CREATE TABLE IF NOT EXISTS scan_history (
         with self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(self.SCHEMA)
+                # Lift older databases to the current schema (idempotent in
+                # Postgres via ADD COLUMN IF NOT EXISTS).
+                for _, ddl in _MIGRATE_COLUMNS:
+                    cur.execute(ddl.replace(
+                        "ALTER TABLE jobs ADD COLUMN",
+                        "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS"))
             conn.commit()
         return self.url
 

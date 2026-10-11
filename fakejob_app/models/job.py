@@ -58,6 +58,8 @@ class JobRecord:
     hybrid_score: float = 0.0
     rule_score: float = 0.0
     ml_score: float = 0.0
+    industry: str = "Other"
+    job_role: str = "Other"
     scanned_at: str = ""
 
 
@@ -81,6 +83,8 @@ def _job_payload(record: JobRecord) -> dict[str, Any]:
         "hybrid_score": float(record.hybrid_score or 0.0),
         "rule_score": float(record.rule_score or 0.0),
         "ml_score": float(record.ml_score or 0.0),
+        "industry": record.industry or "Other",
+        "job_role": record.job_role or "Other",
         "scanned_at": record.scanned_at or _now_iso(),
     }
 
@@ -108,10 +112,11 @@ def get_job(job_id: int, db_path: Optional[str] = None) -> Optional[dict[str, An
 
 def list_jobs(risk_level: Optional[str] = None, source: Optional[str] = None,
               query: Optional[str] = None, limit: int = 50, offset: int = 0,
+              industry: Optional[str] = None, role: Optional[str] = None,
               db_path: Optional[str] = None) -> list[dict[str, Any]]:
     with _lock:
         return select_backend(db_path).list_jobs(
-            risk_level, source, query, limit, offset)
+            risk_level, source, query, limit, offset, industry, role)
 
 
 def count_jobs(risk_level: Optional[str] = None, db_path: Optional[str] = None) -> int:

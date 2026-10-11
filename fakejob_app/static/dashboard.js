@@ -7,13 +7,15 @@
 const LEVELS = ["Critical", "High", "Medium", "Low"];
 const LEVEL_EMOJI = { Critical: "🚨", High: "🔴", Medium: "🟡", Low: "🟢" };
 
-const state = { jobs: [], risk: "", source: "", q: "" };
+const state = { jobs: [], risk: "", source: "", q: "", industry: "", role: "" };
 
 const groupsEl = document.getElementById("job-groups");
 const errorBox = document.getElementById("dash-error");
 const scanStatus = document.getElementById("scan-status");
 const scanBtn = document.getElementById("btn-scan");
 const scanLabel = document.getElementById("btn-scan-label");
+const industrySel = document.getElementById("filter-industry");
+const roleSel = document.getElementById("filter-role");
 
 function statusClass(status) {
   const s = (status || "unknown").toLowerCase();
@@ -99,12 +101,16 @@ function jobCard(job) {
   el.className = "job-card";
   el.href = `/dashboard/jobs/${job.id}`;
   const posted = (job.posted_at || "").slice(0, 10);
+  const taxonomy = `"${escapeHtml(job.industry || "Other")} \u203a ${escapeHtml(job.job_role || "Other")}"`;
+  const taxLine = (job.industry && job.industry !== "Other")
+    ? `<div class="job-tax">${taxonomy}</div>` : "";
   el.innerHTML = `
     <div class="job-card-top">
       <strong class="job-card-title">${escapeHtml(job.title || "Untitled role")}</strong>
       <span class="risk-pill ${pillClass(job.overall_risk_level)}">${LEVEL_EMOJI[job.overall_risk_level] || ""} ${escapeHtml(job.overall_risk_level)}</span>
     </div>
     <div class="job-card-meta">${escapeHtml(job.company || "Unknown company")}${job.location ? " &bull; " + escapeHtml(job.location) : ""}</div>
+    ${taxLine}
     <div class="job-card-foot">
       <span class="job-source">${escapeHtml(job.source || "")}</span>
       <span class="job-date">${escapeHtml(posted || "date unknown")}</span>
@@ -112,11 +118,87 @@ function jobCard(job) {
   return el;
 }
 
+// ---- Industry / role search sections -----------------------------------
+let TAXONOMY = { industries: {} };
+
+function rebuildRoleOptions() {
+  if (!roleSel) return;
+  const selected = state.industry;
+  let roles = [];
+  if (selected) {
+    roles = (TAXONOMY.industries[selected] || []).slice();
+  } else {
+    const seen = new Set();
+    Object.values(TAXONOMY.industries).forEach((list) => {
+      (list || []).forEach((r) => { if (!seen.has(r)) { seen.add(r); roles.push(r); } });
+    });
+    roles.sort();
+  }
+  roles.push("Other");
+  roleSel.innerHTML = "";
+  const any = document.createElement("option");
+  any.value = "";
+  any.textContent = "All roles";
+  roleSel.appendChild(any);
+  roles.forEach((r) => {
+    const opt = document.createElement("option");
+    opt.value = r;
+    opt.textContent = r;
+    roleSel.appendChild(opt);
+  });
+}
+
+function populateIndustryOptions() {
+  if (!industrySel) return;
+  industrySel.innerHTML = "";
+  const any = document.createElement("option");
+  any.value = "";
+  any.textContent = "All industries";
+  industrySel.appendChild(any);
+  Object.keys(TAXONOMY.industries).forEach((name) => {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    industrySel.appendChild(opt);
+  });
+}
+
+async function loadTaxonomy() {
+  try {
+    const res = await fetch("/api/taxonomy");
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to load industry/role options");
+    TAXONOMY = data || { industries: {} };
+    populateIndustryOptions();
+    rebuildRoleOptions();
+  } catch (err) {
+    // Options stay empty; industry/role filters then simply match nothing.
+  }
+}
+
+if (industrySel) {
+  industrySel.addEventListener("change", (e) => {
+    state.industry = e.target.value;
+    state.role = "";
+    if (roleSel) roleSel.value = "";
+    rebuildRoleOptions();
+    render();
+  });
+}
+if (roleSel) {
+  roleSel.addEventListener("change", (e) => {
+    state.role = e.target.value;
+    render();
+  });
+}
+
 function filteredJobs() {
   const q = state.q.trim().toLowerCase();
   return state.jobs.filter((j) => {
     if (state.risk && j.overall_risk_level !== state.risk) return false;
     if (state.source && j.source !== state.source) return false;
+    if (state.industry && (j.industry || "Other") !== state.industry) return false;
+    if (state.role && (j.job_role || "Other") !== state.role) return false;
     if (q && !`${j.title || ""} ${j.company || ""}`.toLowerCase().includes(q)) return false;
     return true;
   });
@@ -132,7 +214,8 @@ function render() {
     const list = byLevel[level] || [];
     section.querySelector(".group-count").textContent = `${list.length}`;
     // Hide empty groups only when a filter is active; otherwise show headers with 0.
-    const filtering = state.risk || state.source || state.q.trim();
+    const filtering = state.risk || state.source || state.q.trim()
+      || state.industry || state.role;
     section.style.display = filtering && list.length === 0 ? "none" : "";
     const wrap = section.querySelector(".job-cards");
     wrap.innerHTML = "";
@@ -336,3 +419,4 @@ async function pollUntilIdle() {
 loadJobs();
 loadHistory();
 refreshScanStatus();
+loadTaxonomy();
