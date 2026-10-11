@@ -1324,17 +1324,6 @@ textarea::placeholder {
   gap: 12px;
   flex-wrap: wrap;
 }
-.dash-token-row {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
-  width: 100%;
-}
-.dash-token-row .dash-search {
-  max-width: 340px;
-  font-family: var(--font-mono);
-}
 .scan-check {
   display: inline-flex;
   align-items: center;

@@ -90,12 +90,23 @@ def test_dashboard_pages_carry_phase5_markup(history_client):
     assert "scan-runs" in dash
     assert 'aria-live="polite"' in dash
     assert 'aria-pressed="true"' in dash
-    # The dashboard scan trigger sends the operator's saved X-Scan-Token.
-    assert 'id="scan-token-input"' in dash
+    # No token entry UI on the dashboard: scans run without a token by design.
+    assert "scan-token-input" not in dash
+    assert "X-Scan-Token" not in dash
 
     home = history_client.get("/").get_data(as_text=True)
     assert "How the ML probability is derived" in home
     assert 'id="ml-note-text"' in home
+
+
+def test_dashboard_scan_flow_needs_no_token(history_client, monkeypatch):
+    """Dashboard-style trigger: POST /api/scan with no X-Scan-Token header
+    must be authorized in the no-token dev/demo mode (LLM disabled)."""
+    monkeypatch.setattr(config, "SCAN_API_TOKEN", "")
+    monkeypatch.setattr(config, "LLM_ENABLED", False)
+    res = history_client.post(
+        "/api/scan", json={"sources": ["bogus"]})
+    assert res.status_code == 400  # authorized: reached source validation
 
 
 def test_job_detail_carries_ml_honesty_note(history_client):
