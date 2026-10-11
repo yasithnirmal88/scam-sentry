@@ -10,9 +10,11 @@ from scanner.base import NormalizedJob
 @pytest.fixture()
 def api_client(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DATABASE_PATH", str(tmp_path / "api.db"))
+    monkeypatch.setattr(config, "SCAN_API_TOKEN", "test-token")
     init_db(config.DATABASE_PATH)
     import app as app_module
     app_module.app.config["TESTING"] = True
+    app_module.limiter.enabled = False
     with app_module.app.test_client() as client:
         yield client
 
@@ -59,7 +61,9 @@ def test_trigger_scan_stores_with_risk(api_client, monkeypatch):
             return fake_jobs
 
     monkeypatch.setattr(svc, "get_scanner", lambda name, **k: FakeScanner())
-    res = api_client.post("/api/scan?sync=1", json={"sources": ["remoteok"], "limit": 5})
+    res = api_client.post("/api/scan?sync=1",
+                          json={"sources": ["remoteok"], "limit": 5},
+                          headers={"X-Scan-Token": "test-token"})
     assert res.status_code == 200
     body = res.get_json()
     assert body["stored"] == 1 and body["sources"] == {"remoteok": 1}
@@ -70,7 +74,8 @@ def test_trigger_scan_stores_with_risk(api_client, monkeypatch):
 
 
 def test_trigger_scan_unknown_source(api_client):
-    res = api_client.post("/api/scan", json={"sources": ["linkedin"], "limit": 5})
+    res = api_client.post("/api/scan", json={"sources": ["linkedin"], "limit": 5},
+                          headers={"X-Scan-Token": "test-token"})
     assert res.status_code == 400
 
 

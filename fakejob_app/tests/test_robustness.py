@@ -86,6 +86,7 @@ def test_jobs_api_bad_limit_still_200(tmp_path, monkeypatch):
     init_db(config.DATABASE_PATH)
     import app as app_module
     app_module.app.config["TESTING"] = True
+    app_module.limiter.enabled = False
     with app_module.app.test_client() as client:
         assert client.get("/api/jobs?limit=abc&offset=-3").status_code == 200
 
