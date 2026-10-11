@@ -85,8 +85,10 @@ FRESHNESS_VERY_STALE_DAYS = int(os.getenv("FRESHNESS_VERY_STALE_DAYS", "90"))
 # Abuse & cost control (Phase 3). Always on; tune via env.
 # ---------------------------------------------------------------------------
 # Shared secret that must be sent as the `X-Scan-Token` header to trigger a
-# scan (POST /api/scan). Empty = the endpoint rejects every request (safe
-# default). Production must set a long random value.
+# scan (POST /api/scan). Empty = no-token dev/demo mode: scans run open only
+# while the LLM layer is off (`LLM_ENABLED=false`, no spend / no off-box text);
+# `_assert_secure_startup` refuses to boot with LLM_ENABLED=true unless a token
+# is set. Production must set a long random value.
 SCAN_API_TOKEN = os.getenv("SCAN_API_TOKEN", "").strip()
 # Per-IP allowed request rate on the analysis endpoints and on the scan-trigger
 # endpoint. Flask-Limiter parses these (e.g. "30/minute"). The app refuses to

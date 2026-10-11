@@ -37,9 +37,20 @@ def test_scan_requires_token(client, monkeypatch):
     assert ok.status_code == 400  # authenticated: proceeds to source validation
 
 
-def test_scan_rejects_everyone_when_token_unset(client, monkeypatch):
+def test_scan_open_without_token_in_dev_mode(client, monkeypatch):
+    """No-token dev/demo mode: token unset + LLM off => scans run open."""
     init_db(config.DATABASE_PATH)
     monkeypatch.setattr(config, "SCAN_API_TOKEN", "")
+    monkeypatch.setattr(config, "LLM_ENABLED", False)
+    ok = client.post("/api/scan", json={"sources": ["bogus"]})
+    assert ok.status_code == 400  # authorized: proceeds to source validation
+
+
+def test_scan_rejects_without_token_when_llm_enabled(client, monkeypatch):
+    """Fail-closed with a spend path: token unset + LLM on => 401."""
+    init_db(config.DATABASE_PATH)
+    monkeypatch.setattr(config, "SCAN_API_TOKEN", "")
+    monkeypatch.setattr(config, "LLM_ENABLED", True)
     assert client.post("/api/scan", json={}).status_code == 401
     with_header = client.post("/api/scan", json={}, headers={"X-Scan-Token": ""})
     assert with_header.status_code == 401
