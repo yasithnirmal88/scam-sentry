@@ -97,6 +97,11 @@ export LLM_MODEL=gpt-4o-mini
 - Paste-text / file-upload (PDF, PNG, JPG) analysis with OCR
 - Risk dashboard (`/dashboard`): grouped by risk level, counts, filters
   (risk / source / keyword search), job detail pages with full evidence
+- **Search by Industry & Job Role**: two dashboard sections listing the world's
+  industry categories and the job roles under each. Every scanned listing is
+  auto-classified into industry + role (deterministic keyword rules in
+  `taxonomy.py`; display/filter aid only, never part of the risk verdict), and
+  the detail page shows both chips. Filter by industry, then narrow to a role.
 - One-click scans from the UI, background scheduler, `scan.py` CLI
 - Optional LLM enhancement layer (OpenAI-compatible; off by default)
 - 140+ automated tests (`pytest`)
@@ -189,12 +194,13 @@ No LinkedIn scraping, by design.
 |---|---|---|
 | `/api/analyze/text` | POST `{"text": "..."}` | Single-job risk report |
 | `/api/analyze/file` | POST multipart `file` | Single-job risk report (OCR) |
-| `/api/jobs?risk_level=&source=&q=&limit=&offset=` | GET | Scanned jobs + totals + per-level counts |
+| `/api/jobs?risk_level=&source=&industry=&role=&q=&limit=&offset=` | GET | Scanned jobs + totals + per-level counts (`industry`/`role` filter by the auto-classified taxonomy fields) |
 | `/api/jobs/<id>` | GET | One stored job with full risk report |
 | `/api/scan` | POST `{"sources": [...], "limit": N}` + `X-Scan-Token` header | Async scan → `202`; `?sync=1` to wait. `401` without a valid `SCAN_API_TOKEN`, `429` when over the rate limit |
 | `/api/scan/status` | GET | Running/idle + last recorded run |
 | `/api/scan/history?limit=` | GET | Recent scan runs, newest first (id, status, stored/fetched/skipped/duplicates, sources) — rendered on the dashboard |
 | `/api/sources` | GET | Registered scanner names |
+| `/api/taxonomy` | GET | World industry categories + the job roles under each (powers the dashboard's industry/role pickers) |
 | `/api/health` | GET | `{"status": "ok", "model_loaded": false, "model": {...}}` — `model_loaded` flips to `true` after the first `/api/analyze` (the ML model loads lazily); `model` is the model card (source/estimator/samples/accuracy) |
 
 ## Environment variables
@@ -307,6 +313,7 @@ fakejob_app/
 ├── app.py                # Flask app, API, dashboard routes
 ├── config.py             # All settings (env-overridable)
 ├── scan.py               # Scanner CLI (cron / daemon)
+├── taxonomy.py           # world industry/role classification for the dashboard pickers
 ├── risk/                 # indicators, engine, llm_enhancer, verification, actions
 ├── scanner/              # base.py + remoteok/remotive/arbeitnow/jobicy
 ├── services/             # scanner_service, evaluation_service, scheduler

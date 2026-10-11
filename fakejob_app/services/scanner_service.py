@@ -18,6 +18,7 @@ import config
 from models.job import JobRecord, init_db, record_scan_run, save_job, utcnow_iso
 from scanner import get_scanner, list_sources, normalize_url
 from services.evaluation_service import evaluate_job
+from taxonomy import classify
 
 logger = logging.getLogger("scam_sentry.scanner_service")
 
@@ -80,6 +81,7 @@ def run_scan(sources: Optional[list[str]] = None, limit_per_source: int | None =
                 summary["skipped"] += 1
                 summary["errors"].setdefault("evaluation", []).append(url)
                 continue
+            industry, job_role = classify(job.title, job.description)
             record = JobRecord(
                 title=job.title, company=job.company, location=job.location,
                 description=job.description, raw_description=job.description,
@@ -94,6 +96,8 @@ def run_scan(sources: Optional[list[str]] = None, limit_per_source: int | None =
                 hybrid_score=float(risk.get("hybrid_score", 0.0) or 0.0),
                 rule_score=float(risk.get("rule_score", 0.0) or 0.0),
                 ml_score=float(risk.get("ml_score", 0.0) or 0.0),
+                industry=industry,
+                job_role=job_role,
             )
             save_job(record, db_path)
             summary["evaluated"] += 1

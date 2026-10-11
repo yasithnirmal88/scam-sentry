@@ -1297,6 +1297,13 @@ textarea::placeholder {
   gap: 10px;
   flex-wrap: wrap;
 }
+.dash-browse-title {
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.75;
+  margin-top: 2px;
+}
 .dash-select,
 .dash-search {
   font: inherit;
@@ -1369,6 +1376,16 @@ textarea::placeholder {
   margin-top: 6px;
   font-size: 0.85rem;
   opacity: 0.8;
+}
+.job-tax {
+  margin-top: 6px;
+  font-size: 0.74rem;
+  opacity: 0.7;
+  font-family: var(--font-mono);
+  color: #67e8f9;
+}
+.job-tax:empty {
+  display: none;
 }
 .job-card-foot {
   margin-top: 10px;
