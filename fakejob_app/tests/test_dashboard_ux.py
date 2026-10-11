@@ -90,6 +90,8 @@ def test_dashboard_pages_carry_phase5_markup(history_client):
     assert "scan-runs" in dash
     assert 'aria-live="polite"' in dash
     assert 'aria-pressed="true"' in dash
+    # The dashboard scan trigger sends the operator's saved X-Scan-Token.
+    assert 'id="scan-token-input"' in dash
 
     home = history_client.get("/").get_data(as_text=True)
     assert "How the ML probability is derived" in home
