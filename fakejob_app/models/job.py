@@ -12,7 +12,8 @@ This module is the public facade. It selects a storage backend per call
 
 The public API is unchanged: ``init_db``, ``save_job``, ``get_job``,
 ``list_jobs``, ``count_jobs``, ``risk_counts``, ``record_scan_run``,
-``get_last_scan``, ``utcnow_iso`` and the ``JobRecord`` dataclass.
+``get_last_scan``, ``list_scan_history``, ``utcnow_iso`` and the
+``JobRecord`` dataclass.
 """
 
 from __future__ import annotations
@@ -151,3 +152,9 @@ def get_last_scan(db_path: Optional[str] = None) -> Optional[dict[str, Any]]:
     """Most recent scan run, or None if no scan has been recorded yet."""
     with _lock:
         return select_backend(db_path).get_last_scan()
+
+
+def list_scan_history(db_path: Optional[str] = None, limit: int = 20) -> list[dict[str, Any]]:
+    """Most recent scan runs, newest first (empty list on any error)."""
+    with _lock:
+        return select_backend(db_path).list_scan_history(limit)

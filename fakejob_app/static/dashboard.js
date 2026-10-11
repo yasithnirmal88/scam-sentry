@@ -15,6 +15,55 @@ const scanStatus = document.getElementById("scan-status");
 const scanBtn = document.getElementById("btn-scan");
 const scanLabel = document.getElementById("btn-scan-label");
 
+function statusClass(status) {
+  const s = (status || "unknown").toLowerCase();
+  if (s === "success") return "status-ok";
+  if (s === "partial") return "status-partial";
+  if (s === "running") return "status-busy";
+  if (s === "failed") return "status-fail";
+  return "status-unknown";
+}
+
+function runRow(run) {
+  const el = document.createElement("div");
+  el.className = "scan-run";
+  const start = (run.started_at || "").replace("T", " ").slice(0, 16);
+  const finish = (run.finished_at || "").replace("T", " ").slice(0, 16);
+  const sources = (run.sources || []).join(" + ") || "unknown sources";
+  el.innerHTML = `
+    <div class="scan-run-head">
+      <span class="status-chip ${statusClass(run.status)}">${escapeHtml(run.status || "unknown")}</span>
+      <span class="scan-run-id">run #${run.id}</span>
+      <span class="scan-run-time">${escapeHtml(start)}${finish && finish !== start ? " &rarr; " + escapeHtml(finish) : ""}</span>
+    </div>
+    <div class="scan-run-meta">
+      <span>${run.stored} stored</span><span>${run.fetched} fetched</span>
+      <span>${run.skipped || 0} skipped</span><span>${run.duplicates || 0} duplicates</span>
+      <span class="scan-run-sources">${escapeHtml(sources)}</span>
+    </div>`;
+  return el;
+}
+
+async function loadHistory() {
+  const wrap = document.getElementById("scan-runs");
+  const empty = document.getElementById("history-empty");
+  const countBadge = document.getElementById("history-count");
+  if (!wrap) return;
+  try {
+    const res = await fetch("/api/scan/history?limit=15");
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to load scan history");
+    const runs = data.runs || [];
+    if (countBadge) countBadge.textContent = `${runs.length} run${runs.length === 1 ? "" : "s"}`;
+    wrap.innerHTML = "";
+    if (empty) empty.hidden = runs.length > 0;
+    runs.forEach((r) => wrap.appendChild(runRow(r)));
+  } catch (err) {
+    if (empty) empty.hidden = false;
+    if (empty) empty.querySelector("span").textContent = "Could not load scan history.";
+  }
+}
+
 function setScanning(active) {
   scanBtn.disabled = active;
   scanLabel.textContent = active ? "Scanning…" : "Run New Scan";
@@ -167,8 +216,12 @@ function selectedSources() {
 // Filters
 document.querySelectorAll("#risk-tabs .tab-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
-    document.querySelectorAll("#risk-tabs .tab-btn").forEach((b) => b.classList.remove("active"));
+    document.querySelectorAll("#risk-tabs .tab-btn").forEach((b) => {
+      b.classList.remove("active");
+      b.setAttribute("aria-pressed", "false");
+    });
     btn.classList.add("active");
+    btn.setAttribute("aria-pressed", "true");
     state.risk = btn.dataset.risk || "";
     render();
   });
@@ -228,6 +281,7 @@ async function startScan(sources) {
     } else {
       scanStatus.textContent = `Done: ${data.stored} stored (${data.fetched} fetched).`;
       await loadJobs();
+      await loadHistory();
       await refreshScanStatus();
     }
   } catch (err) {
@@ -254,6 +308,10 @@ async function pollUntilIdle() {
     await new Promise((r) => setTimeout(r, 3000));
     const status = await refreshScanStatus();
     if (!status) break;
+    // Refresh the job groups + history on every tick so new listings appear
+    // live while the background scan stores them.
+    await loadJobs();
+    await loadHistory();
     if (!status.running) {
       const last = status.last_scan;
       if (last) {
@@ -272,4 +330,5 @@ async function pollUntilIdle() {
 }
 
 loadJobs();
+loadHistory();
 refreshScanStatus();

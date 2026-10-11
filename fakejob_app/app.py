@@ -527,6 +527,18 @@ def api_scan_status():
         return jsonify({"error": f"Could not get scan status: {exc}"}), 500
 
 
+@app.route("/api/scan/history", methods=["GET"])
+def api_scan_history():
+    """Recent scan runs, newest first. Public (dashboard rendering only)."""
+    from models.job import list_scan_history
+    try:
+        runs = list_scan_history(limit=request.args.get("limit", 20))
+    except Exception as exc:
+        logger.exception("Failed to list scan history")
+        return jsonify({"error": f"Could not list scan history: {exc}"}), 500
+    return jsonify({"runs": runs})
+
+
 @app.route("/api/sources", methods=["GET"])
 def api_list_sources():
     return jsonify({"sources": list_sources()})

@@ -82,6 +82,11 @@
         <div class="metric-card"><div class="metric-label">Scanned At</div><div class="metric-val truncate">{{ job.scanned_at[:10] if job.scanned_at else "—" }}</div><div class="metric-meta">{{ job.source or "" }}</div></div>
       </div>
 
+      <div class="disclaimer-callout" style="margin-bottom:14px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <p>The ML probability is a supporting signal from a model trained on a synthetic dataset; the risk verdict is set by the deterministic Risk Engine, never by the ML score.</p>
+      </div>
+
       <div class="evidence-section">
         <div class="evidence-header"><h3>Key Indicators</h3><span class="evidence-badge">{{ job.key_indicators | length }} signals</span></div>
         {% if job.key_indicators %}

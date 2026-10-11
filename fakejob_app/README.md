@@ -193,6 +193,7 @@ No LinkedIn scraping, by design.
 | `/api/jobs/<id>` | GET | One stored job with full risk report |
 | `/api/scan` | POST `{"sources": [...], "limit": N}` + `X-Scan-Token` header | Async scan → `202`; `?sync=1` to wait. `401` without a valid `SCAN_API_TOKEN`, `429` when over the rate limit |
 | `/api/scan/status` | GET | Running/idle + last recorded run |
+| `/api/scan/history?limit=` | GET | Recent scan runs, newest first (id, status, stored/fetched/skipped/duplicates, sources) — rendered on the dashboard |
 | `/api/sources` | GET | Registered scanner names |
 | `/api/health` | GET | `{"status": "ok", "model_loaded": false, "model": {...}}` — `model_loaded` flips to `true` after the first `/api/analyze` (the ML model loads lazily); `model` is the model card (source/estimator/samples/accuracy) |
 
