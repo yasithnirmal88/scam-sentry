@@ -49,7 +49,7 @@ function updateTokenHint() {
   const token = tokenInput.value.trim();
   tokenHint.textContent = token
     ? "Token saved — scans will authenticate."
-    : "No token set — scans will be rejected (see server SCAN_API_TOKEN).";
+    : "No token set — scans use dev/demo open mode; production (LLM enabled) requires SCAN_API_TOKEN.";
 }
 
 if (tokenInput) {

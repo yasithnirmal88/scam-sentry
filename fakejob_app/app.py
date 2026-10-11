@@ -462,13 +462,18 @@ def api_get_job(job_id):
 
 
 def _scan_request_authorized():
-    """The scan trigger is private: require the shared `X-Scan-Token` header.
+    """The scan trigger is private when a token is configured.
 
-    When `SCAN_API_TOKEN` is unset the endpoint rejects every request (safe
-    default) rather than exposing an open scan trigger.
+    With ``SCAN_API_TOKEN`` set, the request must carry the matching
+    ``X-Scan-Token`` header. When the token is unset the endpoint is open
+    ONLY in the no-token dev/demo mode (``LLM_ENABLED=false``, i.e. no
+    spend / no off-box text path); once ``LLM_ENABLED`` is true the startup
+    guard already requires a token, so this stays fail-closed either way.
     """
     token = config.SCAN_API_TOKEN
-    return bool(token) and request.headers.get("X-Scan-Token", "") == token
+    if token:
+        return request.headers.get("X-Scan-Token", "") == token
+    return not config.LLM_ENABLED
 
 
 @app.route("/api/scan", methods=["POST"])
@@ -477,7 +482,9 @@ def api_trigger_scan():
     """Trigger a scan manually. Body (JSON, optional): {sources: [...], limit: N}.
 
     Requires the `X-Scan-Token` header to match `SCAN_API_TOKEN` (401
-    otherwise). Sends 429 when the per-IP rate limit is exceeded.
+    otherwise), except in the no-token dev/demo mode (`SCAN_API_TOKEN` unset +
+    `LLM_ENABLED=false`) where scans run open so local demos don't need a
+    secret. Sends 429 when the per-IP rate limit is exceeded.
 
     Runs in a background thread (202) so the web app never blocks.
     Pass ?sync=1 (or {"sync": true}) to wait for completion instead.
