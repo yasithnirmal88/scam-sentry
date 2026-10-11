@@ -174,6 +174,17 @@ class _BaseBackend:
             return None
         return row_to_scan(row) if row else None
 
+    def list_scan_history(self, limit: int = 20) -> list[dict[str, Any]]:
+        """Most recent scan runs, newest first (empty on any error)."""
+        try:
+            rows = self._fetch_all(
+                "SELECT * FROM scan_history ORDER BY id DESC "
+                "LIMIT " + self._p("limit"),
+                {"limit": coerce_limit(limit, default=20, hard_max=100)})
+        except Exception:
+            return []
+        return [row_to_scan(r) for r in rows]
+
 
 class SQLiteBackend(_BaseBackend):
     _ph = ":{}"

@@ -179,7 +179,7 @@
         </div>
 
         <!-- Scanning Loader -->
-        <div class="scanning-state" id="scanning" hidden>
+        <div class="scanning-state" id="scanning" hidden role="status" aria-live="polite">
           <div class="radar-spinner">
             <div class="radar-ring"></div>
             <div class="radar-dot"></div>
@@ -225,7 +225,7 @@
             <div class="metric-card">
               <div class="metric-label">ML Model Probability</div>
               <div class="metric-val" id="ml-score-val">&mdash;</div>
-              <div class="metric-meta">synthetic-trained &middot; supporting signal</div>
+              <div class="metric-meta" id="ml-meta">synthetic-trained &middot; supporting signal</div>
             </div>
             <div class="metric-card">
               <div class="metric-label">Company Found</div>
@@ -238,6 +238,18 @@
               <div class="metric-meta">Input processing</div>
             </div>
           </div>
+
+          <!-- ML signal transparency (Phase 5): raw probability, calibration,
+               and provenance, so a number is never shown without its caveats. -->
+          <details class="text-collapsible" id="ml-details">
+            <summary>
+              <span>How the ML probability is derived</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </summary>
+            <div class="extracted-box ml-note">
+              <p id="ml-note-text">The ML probability is a supporting signal only; the verdict is set by the deterministic Risk Engine.</p>
+            </div>
+          </details>
 
           <!-- Risk Assessment Summary -->
           <div class="evidence-section" id="risk-assessment-section">
@@ -304,7 +316,7 @@
         </article>
 
         <!-- Error Container -->
-        <div class="error-alert" id="error-box" hidden></div>
+        <div class="error-alert" id="error-box" hidden role="alert"></div>
 
       </section>
 
