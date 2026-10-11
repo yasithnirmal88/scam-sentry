@@ -34,6 +34,8 @@ import threading
 
 import numpy as np
 from flask import Flask, request, jsonify, render_template
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from scipy.sparse import hstack, csr_matrix
 
 import config
@@ -41,7 +43,7 @@ import fraud_features
 from fraud_features import extract_all_features, FEATURE_KEYS
 from text_processing import preprocess
 from ocr_utils import extract_text
-from model_training import build_synthetic_dataset, train
+from model_training import build_synthetic_dataset, load_model_metadata, train
 from risk.indicators import analyze_indicators
 from risk.engine import assess_risk, has_critical
 from risk.verification import verify_employer
@@ -61,19 +63,69 @@ logger = logging.getLogger("scam_sentry")
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
 
+# Per-IP rate limits (abuse & cost control). Limits are callables so they can
+# be tuned via env/config without restarting; tests toggle `limiter.enabled`.
+# In-memory storage is fine for a single Render worker; per-worker counters
+# on gunicorn multi-worker would need a shared storage backend.
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=[],
+    storage_uri="memory://",
+)
+
+
+def _assert_secure_startup():
+    """Refuse to boot the LLM layer on an un-hardened config.
+
+    The LLM layer is the only path that spends money and sends user text
+    off-box, so enabling it without an API token and rate limits is a fatal
+    config error, not a warning.
+    """
+    if not config.LLM_ENABLED:
+        return
+    missing = []
+    if not config.SCAN_API_TOKEN:
+        missing.append("SCAN_API_TOKEN is not set")
+    if not (config.RATE_LIMIT_ANALYZE and config.RATE_LIMIT_SCAN):
+        missing.append("rate limits are not configured "
+                       "(RATE_LIMIT_ANALYZE / RATE_LIMIT_SCAN)")
+    if missing:
+        raise SystemExit(
+            "Refusing to start: LLM_ENABLED=true but " + "; ".join(missing)
+            + ". Set them before enabling the LLM layer."
+        )
+
+
+_assert_secure_startup()
+
 
 @app.after_request
 def _security_headers(response):
-    """Baseline hardening headers (no auth in this app; keep clickjacking/MIME off)."""
+    """Baseline hardening headers (clickjacking, MIME sniffing, same-origin
+    content policy). Templates load static JS/CSS same-origin plus Google
+    Fonts; inline style attributes are used, so style-src allows them."""
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' "
+        "https://fonts.googleapis.com; font-src https://fonts.gstatic.com; "
+        "img-src 'self' data:; connect-src 'self'; object-src 'none'; "
+        "frame-ancestors 'self'; base-uri 'self'; form-action 'self'",
+    )
     return response
 
 
 @app.errorhandler(413)
 def _file_too_large(_exc):
     return jsonify({"error": "File is too large. Please upload a file under 10 MB."}), 413
+
+
+@app.errorhandler(429)
+def _rate_limited(_exc):
+    return jsonify({"error": "Too many requests. Please slow down and try again."}), 429
 
 _clf = None
 _tfidf = None
@@ -124,6 +176,26 @@ def vectorize(text):
     return combined, result
 
 
+def _ml_note():
+    """One honest sentence about where the ML probability comes from."""
+    meta = load_model_metadata()
+    if not meta.get("available"):
+        return ("The ML probability is a supporting signal only; the verdict "
+                "is set by the deterministic Risk Engine.")
+    source = "synthetic training data"
+    if meta.get("source") == "real":
+        source = "a real dataset"
+    acc = meta.get("validation_accuracy")
+    acc_str = f"{acc * 100:.1f}%" if acc is not None else "n/a"
+    estimator = meta.get("estimator") or "GradientBoosting"
+    return (
+        f"ML probability comes from a {estimator} model trained on {source} "
+        f"(n_samples={meta.get('n_samples', '?')}, validation accuracy "
+        f"{acc_str}); the verdict is set by the deterministic Risk Engine and "
+        f"the ML output is a supporting signal only."
+    )
+
+
 def classify(text, posted_at=None, use_llm=None):
     """Full risk report for one posting.
 
@@ -143,7 +215,16 @@ def classify(text, posted_at=None, use_llm=None):
 
     _ensure_model()
     X, rule_result = vectorize(text)
-    ml_proba_fake = float(_clf.predict_proba(X)[0][1]) * 100  # 0-100
+    # ML honesty (Phase 4): GradientBoosting predict_proba is over-confident,
+    # and this model is trained on a synthetic set. Shrink the raw probability
+    # toward a neutral prior so the ML signal never overstates itself, and
+    # expose the raw value + provenance for transparency. The rule engine sets
+    # the verdict regardless.
+    raw_ml_100 = float(_clf.predict_proba(X)[0][1]) * 100  # 0-100, raw
+    cal_prior = config.ML_CALIBRATION_PRIOR * 100
+    ml_proba_fake = raw_ml_100
+    if config.ML_CALIBRATION:
+        ml_proba_fake = cal_prior + (raw_ml_100 - cal_prior) * config.ML_CALIBRATION_SHRINK
 
     rule_score = rule_result["rule_score"]  # 0-100, transparent
 
@@ -254,6 +335,13 @@ def classify(text, posted_at=None, use_llm=None):
         "hybrid_score": hybrid_01,
         "rule_score": rule_01,
         "ml_score": ml_01,
+        "ml_raw_probability": round(raw_ml_100, 1),
+        "ml_note": _ml_note(),
+        "calibration": {
+            "applied": bool(config.ML_CALIBRATION),
+            "prior": config.ML_CALIBRATION_PRIOR,
+            "shrink": config.ML_CALIBRATION_SHRINK,
+        },
         "raw_text_preview": text[:800],
         # Backward-compatible fields.
         "prediction": prediction,
@@ -275,6 +363,7 @@ def index():
 
 
 @app.route("/api/analyze/text", methods=["POST"])
+@limiter.limit(lambda: config.RATE_LIMIT_ANALYZE)
 def analyze_text():
     data = request.get_json(silent=True) or {}
     text = data.get("text", "")
@@ -286,6 +375,7 @@ def analyze_text():
 
 
 @app.route("/api/analyze/file", methods=["POST"])
+@limiter.limit(lambda: config.RATE_LIMIT_ANALYZE)
 def analyze_file():
     if "file" not in request.files:
         return jsonify({"error": "No file was uploaded."}), 400
@@ -313,7 +403,25 @@ def analyze_file():
 
 @app.route("/api/health")
 def health():
-    return jsonify({"status": "ok", "model_loaded": _clf is not None})
+    return jsonify({
+        "status": "ok",
+        "model_loaded": _clf is not None,
+        "model": _health_model_info(),
+    })
+
+
+def _health_model_info():
+    """Model provenance for /api/health (never raises)."""
+    meta = load_model_metadata()
+    return {
+        "available": meta.get("available", False),
+        "source": meta.get("source"),
+        "estimator": meta.get("estimator"),
+        "n_samples": meta.get("n_samples"),
+        "n_features": meta.get("n_features"),
+        "validation_accuracy": meta.get("validation_accuracy"),
+        "trained_at_utc": meta.get("trained_at_utc"),
+    }
 
 # ---------------------------------------------------------------------------
 # Job Risk Scanner API (Phase 1)
@@ -353,13 +461,31 @@ def api_get_job(job_id):
     return jsonify(job)
 
 
+def _scan_request_authorized():
+    """The scan trigger is private: require the shared `X-Scan-Token` header.
+
+    When `SCAN_API_TOKEN` is unset the endpoint rejects every request (safe
+    default) rather than exposing an open scan trigger.
+    """
+    token = config.SCAN_API_TOKEN
+    return bool(token) and request.headers.get("X-Scan-Token", "") == token
+
+
 @app.route("/api/scan", methods=["POST"])
+@limiter.limit(lambda: config.RATE_LIMIT_SCAN)
 def api_trigger_scan():
     """Trigger a scan manually. Body (JSON, optional): {sources: [...], limit: N}.
+
+    Requires the `X-Scan-Token` header to match `SCAN_API_TOKEN` (401
+    otherwise). Sends 429 when the per-IP rate limit is exceeded.
 
     Runs in a background thread (202) so the web app never blocks.
     Pass ?sync=1 (or {"sync": true}) to wait for completion instead.
     """
+    if not _scan_request_authorized():
+        return jsonify({"error": "Unauthorized: provide the correct "
+                                  "X-Scan-Token header."}), 401
+
     from services import scheduler
     from services.scanner_service import run_scan
 
@@ -399,6 +525,18 @@ def api_scan_status():
     except Exception as exc:
         logger.exception("Failed to get scan status")
         return jsonify({"error": f"Could not get scan status: {exc}"}), 500
+
+
+@app.route("/api/scan/history", methods=["GET"])
+def api_scan_history():
+    """Recent scan runs, newest first. Public (dashboard rendering only)."""
+    from models.job import list_scan_history
+    try:
+        runs = list_scan_history(limit=request.args.get("limit", 20))
+    except Exception as exc:
+        logger.exception("Failed to list scan history")
+        return jsonify({"error": f"Could not list scan history: {exc}"}), 500
+    return jsonify({"runs": runs})
 
 
 @app.route("/api/sources", methods=["GET"])

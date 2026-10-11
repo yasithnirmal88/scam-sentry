@@ -25,6 +25,14 @@ ML_WEIGHT = 0.45
 CRITICAL_SCORE_FLOOR = 70
 STRONG_SCORE_FLOOR = 60
 
+# ML honesty (Phase 4): GradientBoosting probabilities are over-confident, and
+# the committed model is trained on a synthetic set. Pull the ML probability
+# toward a neutral prior so the ML signal never overstates itself; the rule
+# engine stays the source of truth. OFF restores the raw model output.
+ML_CALIBRATION = os.getenv("ML_CALIBRATION", "true").lower() == "true"
+ML_CALIBRATION_PRIOR = float(os.getenv("ML_CALIBRATION_PRIOR", "0.5"))
+ML_CALIBRATION_SHRINK = float(os.getenv("ML_CALIBRATION_SHRINK", "0.7"))
+
 # Legacy thresholds (kept for backward-compatible fields).
 FAKE_THRESHOLD = 50
 HIGH_RISK_THRESHOLD = 65
@@ -49,6 +57,10 @@ LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 # Job Risk Scanner (Phase 1).
 DATABASE_PATH = os.getenv("SCAM_SENTRY_DB", os.path.join(APP_DIR, "scam_sentry.db"))
+# Persistent storage backend. When DATABASE_URL is set (Render / Neon /
+# Supabase Postgres), it is used instead of the local SQLite file. Empty =
+# SQLite (the local default).
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 SCANNER_TIMEOUT = int(os.getenv("SCANNER_TIMEOUT", "20"))
 SCANNER_DEFAULT_LIMIT = int(os.getenv("SCANNER_LIMIT", "20"))
 SCANNER_USER_AGENT = os.getenv("SCANNER_USER_AGENT", "ScamSentry/1.0 (+job-risk-research)")
@@ -68,6 +80,19 @@ SCANNER_RETRY_BACKOFF = float(os.getenv("SCANNER_RETRY_BACKOFF", "2"))
 # Freshness bands (days) for Ghost/Stale signals.
 FRESHNESS_STALE_DAYS = int(os.getenv("FRESHNESS_STALE_DAYS", "60"))
 FRESHNESS_VERY_STALE_DAYS = int(os.getenv("FRESHNESS_VERY_STALE_DAYS", "90"))
+
+# ---------------------------------------------------------------------------
+# Abuse & cost control (Phase 3). Always on; tune via env.
+# ---------------------------------------------------------------------------
+# Shared secret that must be sent as the `X-Scan-Token` header to trigger a
+# scan (POST /api/scan). Empty = the endpoint rejects every request (safe
+# default). Production must set a long random value.
+SCAN_API_TOKEN = os.getenv("SCAN_API_TOKEN", "").strip()
+# Per-IP allowed request rate on the analysis endpoints and on the scan-trigger
+# endpoint. Flask-Limiter parses these (e.g. "30/minute"). The app refuses to
+# boot the LLM layer unless both are set.
+RATE_LIMIT_ANALYZE = os.getenv("RATE_LIMIT_ANALYZE", "30/minute").strip()
+RATE_LIMIT_SCAN = os.getenv("RATE_LIMIT_SCAN", "5/minute").strip()
 
 # ---------------------------------------------------------------------------
 # Optional LLM enhancement layer (OpenAI-compatible chat/completions).
