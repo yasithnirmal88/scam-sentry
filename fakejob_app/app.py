@@ -434,11 +434,14 @@ def _health_model_info():
 
 @app.route("/api/jobs", methods=["GET"])
 def api_list_jobs():
-    """List scanned jobs. Query params: risk_level, source, q, limit, offset."""
+    """List scanned jobs. Query params: risk_level, source, industry, role,
+    q, limit, offset."""
     try:
         jobs = list_jobs(
             risk_level=request.args.get("risk_level"),
             source=request.args.get("source"),
+            industry=request.args.get("industry"),
+            role=request.args.get("role"),
             query=request.args.get("q"),
             limit=request.args.get("limit", 50),
             offset=request.args.get("offset", 0),
@@ -554,6 +557,14 @@ def api_scan_history():
 @app.route("/api/sources", methods=["GET"])
 def api_list_sources():
     return jsonify({"sources": list_sources()})
+
+
+@app.route("/api/taxonomy", methods=["GET"])
+def api_taxonomy():
+    """World industry categories + the job roles under each, for the
+    dashboard's "browse by industry, then role" pickers. Public."""
+    from taxonomy import INDUSTRIES
+    return jsonify({"industries": INDUSTRIES})
 
 
 # ---------------------------------------------------------------------------

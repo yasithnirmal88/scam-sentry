@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=5">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=6">
 </head>
 <body>
 
@@ -56,14 +56,14 @@
     <div class="metrics-grid dash-status" aria-live="polite">
       <div class="metric-card"><div class="metric-label">Total Jobs Stored</div><div class="metric-val" id="total-jobs">{{ total }}</div><div class="metric-meta">across all sources</div></div>
       <div class="metric-card"><div class="metric-label">Last Scan</div><div class="metric-val truncate" id="last-scan-time">{{ (last_scan.finished_at[:16] if last_scan and last_scan.finished_at else "Never") | replace("T", " ") }}</div><div class="metric-meta" id="last-scan-detail">{% if last_scan %}{{ last_scan.stored }} stored &bull; {{ last_scan.fetched }} fetched{% else %}no scan recorded yet{% endif %}</div></div>
-      <div class="metric-card"><div class="metric-label">Last Scan Status</div><div class="metric-val" id="last-scan-status">{% if last_scan %}{{ last_scan.status }}{% else %}—{% endif %}</div><div class="metric-meta">success / partial / failed</div></div>
+      <div class="metric-card"><div class="metric-label">Last Scan Status</div><div class="metric-val" id="last-scan-status">{% if last_scan %}{{ last_scan.status }}{% else %}â€”{% endif %}</div><div class="metric-meta">success / partial / failed</div></div>
     </div>
 
     <!-- First-run welcome (shown only when the database is empty) -->
     {% if total == 0 %}
     <section class="card welcome-banner" id="welcome-banner">
-      <h2>👋 Welcome to the Job Risk Scanner</h2>
-      <p>No jobs have been scanned yet. Run your first scan to pull live listings from public job boards — every posting is automatically evaluated by the Risk Engine and grouped below by risk level.</p>
+      <h2>ðŸ‘‹ Welcome to the Job Risk Scanner</h2>
+      <p>No jobs have been scanned yet. Run your first scan to pull live listings from public job boards â€” every posting is automatically evaluated by the Risk Engine and grouped below by risk level.</p>
       <div class="welcome-steps">
         <span>1 &bull; Pick sources</span>
         <span>2 &bull; Run scan</span>
@@ -77,10 +77,10 @@
 
     <!-- Risk counts -->
     <div class="metrics-grid dash-counts">
-      <div class="metric-card dash-count" data-level="Critical"><div class="metric-label">🚨 Critical</div><div class="metric-val" id="count-critical">{{ counts.get('Critical', 0) }}</div><div class="metric-meta">immediate danger signals</div></div>
-      <div class="metric-card dash-count" data-level="High"><div class="metric-label">🔴 High</div><div class="metric-val" id="count-high">{{ counts.get('High', 0) }}</div><div class="metric-meta">multiple strong warnings</div></div>
-      <div class="metric-card dash-count" data-level="Medium"><div class="metric-label">🟡 Medium</div><div class="metric-val" id="count-medium">{{ counts.get('Medium', 0) }}</div><div class="metric-meta">proceed with caution</div></div>
-      <div class="metric-card dash-count" data-level="Low"><div class="metric-label">🟢 Low</div><div class="metric-val" id="count-low">{{ counts.get('Low', 0) }}</div><div class="metric-meta">no major indicators</div></div>
+      <div class="metric-card dash-count" data-level="Critical"><div class="metric-label">ðŸš¨ Critical</div><div class="metric-val" id="count-critical">{{ counts.get('Critical', 0) }}</div><div class="metric-meta">immediate danger signals</div></div>
+      <div class="metric-card dash-count" data-level="High"><div class="metric-label">ðŸ”´ High</div><div class="metric-val" id="count-high">{{ counts.get('High', 0) }}</div><div class="metric-meta">multiple strong warnings</div></div>
+      <div class="metric-card dash-count" data-level="Medium"><div class="metric-label">ðŸŸ¡ Medium</div><div class="metric-val" id="count-medium">{{ counts.get('Medium', 0) }}</div><div class="metric-meta">proceed with caution</div></div>
+      <div class="metric-card dash-count" data-level="Low"><div class="metric-label">ðŸŸ¢ Low</div><div class="metric-val" id="count-low">{{ counts.get('Low', 0) }}</div><div class="metric-meta">no major indicators</div></div>
     </div>
 
     <!-- Controls -->
@@ -88,19 +88,26 @@
       <div class="dash-filters">
         <div class="tab-switcher" role="tablist" id="risk-tabs">
           <button type="button" class="tab-btn active" data-risk="" aria-pressed="true">All</button>
-          <button type="button" class="tab-btn" data-risk="Critical">🚨 Critical</button>
-          <button type="button" class="tab-btn" data-risk="High">🔴 High</button>
-          <button type="button" class="tab-btn" data-risk="Medium">🟡 Medium</button>
-          <button type="button" class="tab-btn" data-risk="Low">🟢 Low</button>
+          <button type="button" class="tab-btn" data-risk="Critical">ðŸš¨ Critical</button>
+          <button type="button" class="tab-btn" data-risk="High">ðŸ”´ High</button>
+          <button type="button" class="tab-btn" data-risk="Medium">ðŸŸ¡ Medium</button>
+          <button type="button" class="tab-btn" data-risk="Low">ðŸŸ¢ Low</button>
         </div>
+        <div class="dash-browse-title">Search by Industry &amp; Job Role</div>
         <div class="dash-filter-row">
+          <select id="filter-industry" class="dash-select" aria-label="Filter by industry">
+            <option value="">All industries</option>
+          </select>
+          <select id="filter-role" class="dash-select" aria-label="Filter by job role">
+            <option value="">All roles</option>
+          </select>
           <select id="filter-source" class="dash-select" aria-label="Filter by source">
             <option value="">All sources</option>
             {% for s in sources %}
             <option value="{{ s }}">{{ s }}</option>
             {% endfor %}
           </select>
-          <input id="filter-q" class="dash-search" type="search" placeholder="Search title or company…" aria-label="Search jobs">
+          <input id="filter-q" class="dash-search" type="search" placeholder="Search title or companyâ€¦" aria-label="Search jobs">
         </div>
       </div>
       <div class="dash-scan">
@@ -115,7 +122,7 @@
           </span>
           <span id="btn-scan-label">Run New Scan</span>
         </button>
-        <span class="file-status-text" id="scan-status" aria-live="polite">Idle — last scan results shown below.</span>
+        <span class="file-status-text" id="scan-status" aria-live="polite">Idle â€” last scan results shown below.</span>
       </div>
     </section>
 
@@ -124,7 +131,7 @@
       {% for level in ["Critical", "High", "Medium", "Low"] %}
       <section class="card dash-group" data-group="{{ level }}">
         <div class="evidence-header">
-          <h3>{{ {"Critical": "🚨 Critical", "High": "🔴 High", "Medium": "🟡 Medium", "Low": "🟢 Low"}[level] }}</h3>
+          <h3>{{ {"Critical": "ðŸš¨ Critical", "High": "ðŸ”´ High", "Medium": "ðŸŸ¡ Medium", "Low": "ðŸŸ¢ Low"}[level] }}</h3>
           <span class="evidence-badge group-count">0</span>
         </div>
         <div class="job-cards"></div>
@@ -139,7 +146,7 @@
         <span class="evidence-badge" id="history-count">0 runs</span>
       </div>
       <div class="no-evidence-box" id="history-empty">
-        <span>No scan runs recorded yet — run a scan and every run will be listed here.</span>
+        <span>No scan runs recorded yet â€” run a scan and every run will be listed here.</span>
       </div>
       <div class="scan-runs" id="scan-runs"></div>
     </section>
@@ -155,6 +162,6 @@
     </div>
   </footer>
 
-  <script src="{{ url_for('static', filename='dashboard.js') }}?v=5"></script>
+  <script src="{{ url_for('static', filename='dashboard.js') }}?v=6"></script>
 </body>
 </html>
