@@ -226,14 +226,16 @@ See `.env.example`. Highlights:
 
 ## Abuse & cost control
 
-- **Scan trigger is private.** `POST /api/scan` requires an `X-Scan-Token`
-  header whose value matches `SCAN_API_TOKEN` — otherwise `401`. When
-  `SCAN_API_TOKEN` is unset the endpoint rejects everyone (safe default), so
-  only the owner who sets the token can spend scan time. The dashboard has a
-  token field (persisted in the browser's `localStorage`) so an operator can
-  run scans from the UI; a token entered on a *public* dashboard page is
-  visible to anyone who can open that page, so gate the dashboard itself on
-  a public deployment rather than shipping the token to the world.
+- **Scan trigger is private when a token is configured.** `POST /api/scan`
+  requires an `X-Scan-Token` header whose value matches `SCAN_API_TOKEN` —
+  otherwise `401`. With the token left **empty** the scan endpoint falls into
+  the no-token *dev/demo mode* and runs open **only while the LLM layer is off**
+  (`LLM_ENABLED=false`, i.e. no spend and no text leaves the box); if
+  `LLM_ENABLED=true` the fail-closed startup guard demands a token, so a
+  spend-enabled server can never run open. The dashboard has a token field
+  (persisted in the browser's `localStorage`) for deployments that set a
+  token; a token entered on a *public* dashboard page is visible to anyone who
+  can open that page, so gate the dashboard itself on a public deployment.
 - **Per-IP rate limiting** on the costliest endpoints (`/api/analyze/text`,
   `/api/analyze/file`, and `/api/scan`) via Flask-Limiter. Defaults:
   `RATE_LIMIT_ANALYZE=30/minute`, `RATE_LIMIT_SCAN=5/minute`; over the limit
