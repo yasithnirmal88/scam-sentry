@@ -115,6 +115,11 @@ def _security_headers(response):
         "img-src 'self' data:; connect-src 'self'; object-src 'none'; "
         "frame-ancestors 'self'; base-uri 'self'; form-action 'self'",
     )
+    # Never let the browser serve a stale copy of our JS/CSS after a deploy
+    # (no cache-busting URLs on the pages). No-store keeps demo iterations
+    # visible immediately.
+    if request.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-store"
     return response
 
 

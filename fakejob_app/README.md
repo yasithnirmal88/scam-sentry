@@ -232,10 +232,9 @@ See `.env.example`. Highlights:
   the no-token *dev/demo mode* and runs open **only while the LLM layer is off**
   (`LLM_ENABLED=false`, i.e. no spend and no text leaves the box); if
   `LLM_ENABLED=true` the fail-closed startup guard demands a token, so a
-  spend-enabled server can never run open. The dashboard has a token field
-  (persisted in the browser's `localStorage`) for deployments that set a
-  token; a token entered on a *public* dashboard page is visible to anyone who
-  can open that page, so gate the dashboard itself on a public deployment.
+  spend-enabled server can never run open. The dashboard sends no token at
+  all (no token UI), so it scans without one in dev/demo mode and shows the
+  server's `401` message if a deployment configures a token.
 - **Per-IP rate limiting** on the costliest endpoints (`/api/analyze/text`,
   `/api/analyze/file`, and `/api/scan`) via Flask-Limiter. Defaults:
   `RATE_LIMIT_ANALYZE=30/minute`, `RATE_LIMIT_SCAN=5/minute`; over the limit

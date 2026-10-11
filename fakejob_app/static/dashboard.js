@@ -14,52 +14,6 @@ const errorBox = document.getElementById("dash-error");
 const scanStatus = document.getElementById("scan-status");
 const scanBtn = document.getElementById("btn-scan");
 const scanLabel = document.getElementById("btn-scan-label");
-const tokenInput = document.getElementById("scan-token-input");
-const tokenHint = document.getElementById("token-hint");
-
-// The scan trigger is private (`SCAN_API_TOKEN`); the dashboard is the human
-// operator's control surface, so it persists the token in localStorage and
-// sends it as `X-Scan-Token`. On a public deployment this means anyone with
-// browser access can read their own saved token — acceptable for a demo
-// kiosk, not for sharing the dashboard externally.
-const SCAN_TOKEN_KEY = "scam_sentry_scan_token";
-
-function savedToken() {
-  try {
-    return localStorage.getItem(SCAN_TOKEN_KEY) || "";
-  } catch (err) {
-    return "";
-  }
-}
-
-function saveToken(token) {
-  try {
-    if (token) {
-      localStorage.setItem(SCAN_TOKEN_KEY, token);
-    } else {
-      localStorage.removeItem(SCAN_TOKEN_KEY);
-    }
-  } catch (err) {
-    // localStorage may be unavailable (private mode); scan simply won't auth.
-  }
-}
-
-function updateTokenHint() {
-  if (!tokenHint || !tokenInput) return;
-  const token = tokenInput.value.trim();
-  tokenHint.textContent = token
-    ? "Token saved — scans will authenticate."
-    : "No token set — scans use dev/demo open mode; production (LLM enabled) requires SCAN_API_TOKEN.";
-}
-
-if (tokenInput) {
-  tokenInput.value = savedToken();
-  updateTokenHint();
-  tokenInput.addEventListener("change", () => {
-    saveToken(tokenInput.value.trim());
-    updateTokenHint();
-  });
-}
 
 function statusClass(status) {
   const s = (status || "unknown").toLowerCase();
@@ -310,12 +264,9 @@ async function startScan(sources) {
   scanStatus.textContent = `Scanning ${sources.join(", ")} — fetching, evaluating, storing…`;
   errorBox.hidden = true;
   try {
-    const headers = { "Content-Type": "application/json" };
-    const token = tokenInput ? tokenInput.value.trim() : savedToken();
-    if (token) headers["X-Scan-Token"] = token;
     const res = await fetch("/api/scan", {
       method: "POST",
-      headers,
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sources, limit: 20 }),
     });
     const data = await res.json();
@@ -325,8 +276,7 @@ async function startScan(sources) {
       return;
     }
     if (res.status === 401) {
-      scanStatus.textContent = "Unauthorized — enter a valid scan token above and retry.";
-      if (tokenInput) tokenInput.focus();
+      scanStatus.textContent = "Unauthorized — this server requires a scan token (SCAN_API_TOKEN).";
       throw new Error(data.error || "Scan failed: token required.");
     }
     if (!res.ok && res.status !== 202) throw new Error(data.error || data.reason || "Scan failed");
