@@ -182,26 +182,34 @@ if (industrySel) {
     state.role = "";
     if (roleSel) roleSel.value = "";
     rebuildRoleOptions();
-    render();
+    loadJobs();
   });
 }
 if (roleSel) {
   roleSel.addEventListener("change", (e) => {
     state.role = e.target.value;
-    render();
+    loadJobs();
   });
 }
 
+// Industry / role / source / keyword are filtered SERVER-SIDE (see loadJobs)
+// so a search is not silently limited to the client-side 200-row window and
+// can match the description too. Only the risk tab is applied locally.
 function filteredJobs() {
-  const q = state.q.trim().toLowerCase();
   return state.jobs.filter((j) => {
     if (state.risk && j.overall_risk_level !== state.risk) return false;
-    if (state.source && j.source !== state.source) return false;
-    if (state.industry && (j.industry || "Other") !== state.industry) return false;
-    if (state.role && (j.job_role || "Other") !== state.role) return false;
-    if (q && !`${j.title || ""} ${j.company || ""}`.toLowerCase().includes(q)) return false;
     return true;
   });
+}
+
+function jobsQueryString() {
+  const params = new URLSearchParams({ limit: "200" });
+  if (state.industry) params.set("industry", state.industry);
+  if (state.role) params.set("role", state.role);
+  if (state.source) params.set("source", state.source);
+  const q = state.q.trim();
+  if (q) params.set("q", q);
+  return params.toString();
 }
 
 function render() {
@@ -209,13 +217,32 @@ function render() {
   const byLevel = { Critical: [], High: [], Medium: [], Low: [] };
   jobs.forEach((j) => { (byLevel[j.overall_risk_level] || byLevel.Low).push(j); });
 
+  const filtering = state.risk || state.source || state.q.trim()
+    || state.industry || state.role;
+
+  // When a filter matches nothing, every group would be hidden below, leaving
+  // a blank page. Show one explicit "no matches" notice instead.
+  let empty = document.getElementById("jobs-empty");
+  if (filtering && jobs.length === 0) {
+    if (!empty) {
+      empty = document.createElement("div");
+      empty.id = "jobs-empty";
+      empty.className = "no-evidence-box";
+      groupsEl.before(empty);
+    }
+    empty.textContent = "";
+    const s = document.createElement("span");
+    s.textContent = "No jobs match the current filters.";
+    empty.appendChild(s);
+  } else if (empty) {
+    empty.remove();
+  }
+
   groupsEl.querySelectorAll(".dash-group").forEach((section) => {
     const level = section.dataset.group;
     const list = byLevel[level] || [];
     section.querySelector(".group-count").textContent = `${list.length}`;
     // Hide empty groups only when a filter is active; otherwise show headers with 0.
-    const filtering = state.risk || state.source || state.q.trim()
-      || state.industry || state.role;
     section.style.display = filtering && list.length === 0 ? "none" : "";
     const wrap = section.querySelector(".job-cards");
     wrap.innerHTML = "";
@@ -267,11 +294,14 @@ async function refreshScanStatus() {
   }
 }
 
+let loadSeq = 0;
 async function loadJobs() {
+  const seq = ++loadSeq;
   errorBox.hidden = true;
   try {
-    const res = await fetch("/api/jobs?limit=200");
+    const res = await fetch(`/api/jobs?${jobsQueryString()}`);
     const data = await res.json();
+    if (seq !== loadSeq) return; // a newer request superseded this one
     if (!res.ok) throw new Error(data.error || "Failed to load jobs");
     state.jobs = data.jobs || [];
     const counts = data.counts || {};
@@ -286,6 +316,7 @@ async function loadJobs() {
     render();
     dismissWelcomeIfJobs();
   } catch (err) {
+    if (seq !== loadSeq) return;
     errorBox.hidden = false;
     errorBox.textContent = "Could not load scanned jobs. Is the backend running?";
   }
@@ -312,7 +343,7 @@ document.querySelectorAll("#risk-tabs .tab-btn").forEach((btn) => {
 
 document.getElementById("filter-source").addEventListener("change", (e) => {
   state.source = e.target.value;
-  render();
+  loadJobs();
 });
 
 let searchTimer = null;
@@ -320,7 +351,7 @@ document.getElementById("filter-q").addEventListener("input", (e) => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => {
     state.q = e.target.value;
-    render();
+    loadJobs();
   }, 180);
 });
 
