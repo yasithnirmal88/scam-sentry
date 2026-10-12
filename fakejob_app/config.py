@@ -14,6 +14,15 @@ APP_DIR = os.path.dirname(__file__)
 ALLOWED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg"}
 MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB
 
+# ---------------------------------------------------------------------------
+# Upload / OCR hardening (DoS & resource-abuse controls). Uploads are
+# untrusted: bound how many PDF pages we read, cap the OCR rasterization DPI,
+# and cap the pixel budget of any single decoded image. All env-overridable.
+# ---------------------------------------------------------------------------
+MAX_PDF_PAGES = int(os.getenv("OCR_MAX_PDF_PAGES", "5"))
+PDF_OCR_DPI = int(os.getenv("OCR_PDF_DPI", "150"))
+MAX_IMAGE_PIXELS = int(os.getenv("OCR_MAX_IMAGE_PIXELS", "20000000"))
+
 MODEL_DIR = os.path.join(APP_DIR, "artifacts")
 MIN_TEXT_LENGTH = 15
 
@@ -45,6 +54,12 @@ GBC_N_ESTIMATORS = 120
 GBC_MAX_DEPTH = 3
 GBC_LEARNING_RATE = 0.08
 SYNTHETIC_SAMPLES_PER_CLASS = 450
+# Real-dataset (EMSCAD / fake_job_postings.csv) support. The committed model is
+# synthetic-trained; real mode is opt-in. Place the CSV at the default path
+# below, or override with the REAL_DATASET_PATH env var / `--real` CLI flag.
+REAL_DATASET_PATH = os.getenv(
+    "REAL_DATASET_PATH", os.path.join(APP_DIR, "data", "fake_job_postings.csv")
+)
 
 # Server settings (12-factor via env).
 FLASK_HOST = os.getenv("FLASK_HOST", "0.0.0.0")

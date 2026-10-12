@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -50,7 +50,7 @@
           <span class="verdict-tag">RISK REPORT &bull; {{ job.source or "scan" }} &bull; {{ job.posted_at or "date unknown" }}</span>
           <div class="verdict-title-row">
             <span class="stamp-badge {{ 'fake' if job.overall_risk_level in ['Critical', 'High'] else 'genuine' }}">
-              {{ {"Critical": "ðŸš¨ CRITICAL", "High": "ðŸ”´ HIGH", "Medium": "ðŸŸ¡ MEDIUM", "Low": "ðŸŸ¢ LOW"}.get(job.overall_risk_level, job.overall_risk_level) }}
+              {{ {"Critical": "🚨 CRITICAL", "High": "🔴 HIGH", "Medium": "🟡 MEDIUM", "Low": "🟢 LOW"}.get(job.overall_risk_level, job.overall_risk_level) }}
             </span>
             <span class="risk-pill {{ job.overall_risk_level.upper() }}">{{ job.confidence }} confidence</span>
           </div>
@@ -85,7 +85,7 @@
         <div class="metric-card"><div class="metric-label">Hybrid Score</div><div class="metric-val">{{ (job.hybrid_score * 100) | round(1) }}%</div><div class="metric-meta">supporting signal</div></div>
         <div class="metric-card"><div class="metric-label">Rule Score</div><div class="metric-val">{{ (job.rule_score * 100) | round(1) }}%</div><div class="metric-meta">indicator weight</div></div>
         <div class="metric-card"><div class="metric-label">ML Probability</div><div class="metric-val">{{ (job.ml_score * 100) | round(1) }}%</div><div class="metric-meta">synthetic-trained &middot; supporting signal</div></div>
-        <div class="metric-card"><div class="metric-label">Scanned At</div><div class="metric-val truncate">{{ job.scanned_at[:10] if job.scanned_at else "â€”" }}</div><div class="metric-meta">{{ job.source or "" }}</div></div>
+        <div class="metric-card"><div class="metric-label">Scanned At</div><div class="metric-val truncate">{{ job.scanned_at[:10] if job.scanned_at else "—" }}</div><div class="metric-meta">{{ job.source or "" }}</div></div>
       </div>
 
       <div class="disclaimer-callout" style="margin-bottom:14px;">
@@ -133,7 +133,7 @@
       </details>
 
       <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
-        {% if job.url %}<a class="btn-primary" href="{{ job.url }}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;">View Original Posting â†—</a>{% endif %}
+        {% if job.url %}<a class="btn-primary" href="{{ job.url }}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;">View Original Posting ↗</a>{% endif %}
         <a class="btn-ghost-sm nav-link" href="{{ url_for('dashboard') }}">&larr; Back to Dashboard</a>
       </div>
 

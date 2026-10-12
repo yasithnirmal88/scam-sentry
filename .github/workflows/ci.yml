@@ -37,7 +37,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
-      - name: Run tests
-        run: python -m pytest tests -q
+      - name: Run tests with coverage gate
+        run: python -m pytest --cov --cov-report=term-missing
       - name: Lint (pyflakes)
         run: python -m pyflakes .

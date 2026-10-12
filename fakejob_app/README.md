@@ -17,8 +17,8 @@ next steps.
 - Each posting is checked against graded indicators: **C1–C4** (critical:
   fees, sensitive-data requests, guaranteed-income pressure, known scam
   patterns), **H1–H5** (high: free email, urgency, missing company, domain
-  mismatch, ghost/stale), **M1–M5** (medium, incl. aging listings),
-  **L1–L3** (low/weak).
+  mismatch, ghost/stale), **H6** (medium: non-English/unverifiable content),
+  **M1–M5** (medium, incl. aging listings), **L1–L3** (low/weak).
 - **First match wins, top-down**: any Critical → Critical; ≥2 High (or
   1 High + ≥2 Medium) → High; 1 High or ≥2 Medium → Medium; only weak
   signals or nothing → Low.
@@ -41,7 +41,7 @@ next steps.
 ## How it works
 
 - **Risk Engine** (`risk/`): severity-graded indicators (C1–C4 critical,
-  H1–H5 high, M1–M5 medium, L1–L3 low) → first-match-wins determination
+  H1–H5 high, H6 + M1–M5 medium, L1–L3 low) → first-match-wins determination
   rules → confidence, categories, summary, recommended actions, and a
   lightweight employer check. A Critical indicator always forces Critical,
   regardless of the ML score.
@@ -59,6 +59,42 @@ next steps.
   every deploy or restart. Set `DATABASE_URL` for durable storage.
 - **Scheduler** (`services/scheduler.py`): dependency-free background thread,
   every N hours; manual scans also run async so the web app never blocks.
+
+## Indicator systems: who decides the verdict
+
+There are two rule/indicator systems, and their roles are deliberately split:
+
+- **`risk/indicators.py` + `risk/engine.py` — authoritative decisioning.**
+  These produce the graded indicators (C1–C4, H1–H6, M1–M5, L1–L3) and the
+  **overall risk level**, risk categories, key indicators, and recommended
+  actions. This is the single source of truth for the verdict.
+- **`fraud_features.py` — ML feature support.** It extracts legacy engineered
+  features that feed the TF-IDF + GradientBoosting hybrid score and provides a
+  transparent rule score. That hybrid score is a **supporting signal only**
+  (reported as `hybrid_score` / `prediction` / `risk_level` for backward
+  compatibility); it never overrides or contradicts the Risk Engine. The
+  authoritative level is reported as `overall_risk_level`.
+
+To keep the two consistent instead of divergent, the signal primitives they
+share — text normalization (`normalize`), the pattern banks, `extract_company_name`,
+and the company/domain matcher (`company_matches_domain`) — live in
+`fraud_features.py` and are imported by the Risk Engine, so H4 and the legacy
+`suspicious_url` feature agree on what a company/domain mismatch is.
+
+**Robustness of the text matching.** Indicator wording is paraphrase-tolerant
+and negation-aware without loosening the Critical rules:
+
+- Pattern banks match common rewordings of the same behavior (e.g. "onboarding
+  fee", "good-faith deposit", "share your banking details") alongside the
+  literal phrasing.
+- C1/C2 (Critical) skip a match whose request is *negated within its clause*
+  ("there is no registration fee", "we never ask for your bank account
+  number"), so disclaimers do not read as scams — while a fee in a *different*
+  clause still fires ("no experience needed. A $20 registration fee applies").
+- A limited set of high-signal non-English fee/credential phrases
+  (ES/FR/DE/PT/ID/TL) is recognized, and predominantly non-Latin-script
+  postings raise **H6** (Medium) instead of returning a misleading confident
+  "Low". H6 is a confidence caveat, never evidence of fraud by itself.
 
 ## Optional LLM enhancement layer
 
@@ -104,7 +140,7 @@ export LLM_MODEL=gpt-4o-mini
   the detail page shows both chips. Filter by industry, then narrow to a role.
 - One-click scans from the UI, background scheduler, `scan.py` CLI
 - Optional LLM enhancement layer (OpenAI-compatible; off by default)
-- 140+ automated tests (`pytest`)
+- 230+ automated tests (`pytest`)
 
 ## Running it locally
 
@@ -138,6 +174,10 @@ Open **http://localhost:5000** (analyzer) and
 On first run the model trains automatically (a few seconds, balanced
 synthetic data) and is saved to `artifacts/`. With `SCAN_ENABLED=false`
 (default) no network scanning happens until you trigger one.
+
+To retrain explicitly (and see hold-out metrics), run
+`python model_training.py`; add `--real fake_job_postings.csv` to train on the
+EMSCAD/Kaggle dataset if you have it. See **ML honesty** below.
 
 ### Production (gunicorn)
 
@@ -254,9 +294,110 @@ See `.env.example`. Highlights:
 
 ## ML honesty
 
-The ML classifier is a **GradientBoosting model trained on a synthetic
-dataset** (the EMSCAD/Kaggle file is referenced by the proposal but unavailable
-offline — see `model_training.py`). To keep the product honest about that:
+### What the ML model contributes
+
+The ML classifier is a **supporting signal only**. It adds a calibrated
+probability that nudges the **hybrid score** used for ranking/display, and it
+contributes a score floor for clearly critical text. It does **not** decide the
+verdict: the deterministic **Risk Engine** (`risk/`) sets
+`overall_risk_level`, `risk_categories`, `key_indicators`, and
+`recommended_actions`. ML can never raise a non-critical post to Critical on its
+own, and it can never lower a Critical Risk Engine decision.
+
+### Default training is synthetic
+
+Out of the box the model is a **GradientBoosting classifier trained on a
+balanced synthetic dataset** generated by `model_training.py`. The EMSCAD /
+Kaggle `fake_job_postings.csv` referenced by the proposal is **not shipped in
+this repo**, so unless you supply it yourself, every committed artifact is
+synthetic-trained. The model card (`/api/health` → `model`, and the
+`meta.pkl` written at training time) records this honestly:
+
+- `source`: `"synthetic"` or `"real"`
+- `dataset`: dataset identifier (`synthetic-generator`, or the real CSV name)
+- `class_distribution`: `{genuine, fake}` sample counts
+- `n_samples`, `n_features`, `trained_at_utc`, `sklearn_version`
+- `metrics`: hold-out `accuracy`, per-class `precision`/`recall`/`f1`, and
+  macro/weighted F1 (Fake = positive class)
+- `honesty_note`: a plain-language caveat about what the metrics mean
+
+**Do not read the synthetic metrics as performance on real postings.** The
+synthetic classes are near-separable, so hold-out accuracy/F1 are ~1.0 by
+construction; that is an artifact of the generator, not evidence of real-world
+skill.
+
+### Real-world evaluation (EMSCAD / `fake_job_postings.csv`)
+
+The full Kaggle dataset is **not shipped in this repo** and is not required to
+run the app. Real-data evaluation is opt-in so that the committed model (and
+every claim about it) stays honest.
+
+**1. Download / place the dataset**
+
+Download `fake_job_postings.csv` from Kaggle (the "Real / Fake Job Posting
+Prediction" / EMSCAD dataset) and place it at:
+
+```
+fakejob_app/data/fake_job_postings.csv
+```
+
+`data/` is git-ignored, so the multi-MB CSV never gets committed. To use a
+different location, pass `--real /path/to/file.csv`, or set the
+`REAL_DATASET_PATH` env var. The loader recognises the usual EMSCAD columns
+(`title`, `company_profile`, `description`, `requirements`, `benefits`, …) and
+builds the model text field from whichever of them are present; the label
+column is `fraudulent`. Rows with a missing/invalid label or empty text are
+dropped, as are duplicate texts.
+
+**2. Train on real data** (writes `classifier.pkl`, `tfidf.pkl`, `meta.pkl`
+with `source="real"`):
+
+```bash
+cd fakejob_app
+python model_training.py --real data/fake_job_postings.csv
+```
+
+**3. Evaluate/report without changing the committed model** (`--eval-only`
+loads the current artifacts and scores a held-out split of the real data; it
+writes nothing):
+
+```bash
+python model_training.py --eval-only --real data/fake_job_postings.csv
+```
+
+**4. Compare synthetic vs real training** in throwaway scratch dirs (committed
+artifacts untouched):
+
+```bash
+python model_training.py --compare --real data/fake_job_postings.csv
+```
+
+If the dataset is absent, the command fails clearly with placement instructions
+instead of silently pretending real-data evaluation ran.
+
+**What the metrics mean.** Every mode prints and stores a held-out split report:
+accuracy, per-class precision/recall/F1 (Fake = positive class), and
+macro/weighted F1, plus class distribution and the sklearn version. Real-data
+metrics are the meaningful ones; the synthetic numbers are only a pipeline
+sanity check (the synthetic classes are near-separable, so they read ~1.0 by
+construction).
+
+### Limitations (stated plainly)
+
+- **Dataset bias.** EMSCAD is a fixed 2018-era English-language dataset, skewed
+  toward US postings and its own annotation choices. Metrics on it do not
+  transfer to other countries, languages, or job boards.
+- **English-centric.** TF-IDF is fit on English text and the rule banks are
+  primarily English; only a limited set of non-English fee/credential phrases
+  is recognized. Predominantly non-Latin-script content raises **H6** (Medium)
+  so the result is not a misleading "Low", but the system is not a multilingual
+  product — do not rely on it for non-English postings.
+- **Not the final authority.** The ML model is one supporting signal. The
+  deterministic **Risk Engine** sets every verdict; ML can never override a
+  Critical decision. Do not present ML metrics as production fraud-detection
+  performance — they are an evaluation of a component, not the system.
+
+### Calibration and provenance in responses
 
 - The ML probability is **calibrated**: `predict_proba` from GBC is
   over-confident, so every analysis shrinks it toward a neutral prior
@@ -266,10 +407,10 @@ offline — see `model_training.py`). To keep the product honest about that:
   transparency.
 - Every `/api/analyze` response carries a `ml_note` (provenance: training
   source, sample count, validation accuracy) plus a `calibration` metadata
-  block, and `/api/health` now reports the model card
-  (`source`, `estimator`, `n_samples`, `n_features`, `validation_accuracy`,
-  `trained_at_utc`). Validation accuracy on synthetic data is **not** a claim
-  about real-world performance.
+  block, and `/api/health` reports the full model card
+  (`source`, `dataset`, `class_distribution`, `estimator`, `n_samples`,
+  `n_features`, `validation_accuracy`, `trained_at_utc`, `sklearn_version`,
+  `metrics`, `honesty_note`).
 - The UI labels the ML card "synthetic-trained · supporting signal" and the
   verdict is always set by the deterministic Risk Engine, never by the ML
   probability.
@@ -321,7 +462,8 @@ fakejob_app/
 ├── models/storage.py     # SQLiteBackend + PostgresBackend
 ├── templates/            # index, dashboard, job_detail
 ├── static/               # style.css, script.js, dashboard.js
-├── tests/                # pytest suite (140+ tests)
+├── tests/                # pytest suite (260+ tests)
+├── pytest.ini / .coveragerc   # test + coverage config (gate lives here)
 ├── Dockerfile / .env.example / requirements.txt
 └── artifacts/            # trained model artifacts (auto-generated)
 ```
@@ -330,6 +472,37 @@ fakejob_app/
 
 ```bash
 cd fakejob_app
-pip install -r requirements-dev.txt
-python -m pytest tests -q
+pip install -r requirements-dev.txt   # runtime deps + pytest/pytest-cov/pyflakes
+python -m pytest                      # full suite (uses pytest.ini / tests/)
+python -m pyflakes .                  # lint, expected to be clean
 ```
+
+### Coverage
+
+Coverage is measured on application source only (tests are excluded) and is
+gated in CI. The local command is the same one CI runs:
+
+```bash
+cd fakejob_app
+python -m pytest --cov --cov-report=term-missing
+```
+
+The gate (`fail_under = 78`) lives in `.coveragerc`; the current suite sits
+around **82%**. The run fails if coverage drops below the gate, so a real
+regression fails CI/build instead of passing silently. Use
+`--cov-report=html` to write an HTML report to `htmlcov/`.
+
+## Retraining the model
+
+See **ML honesty** above for full context. In short:
+
+```bash
+cd fakejob_app
+python model_training.py                          # synthetic (default)
+python model_training.py --real fake_job_postings.csv   # EMSCAD/Kaggle CSV
+```
+
+Training prints a hold-out report (accuracy / precision / recall / F1) and
+writes `classifier.pkl`, `tfidf.pkl`, and a `meta.pkl` model card
+(`source`, `sklearn_version`, `metrics`, `honesty_note`, …) under `artifacts/`.
+The artifacts reload automatically, so no other step is required.
