@@ -56,6 +56,8 @@ _ALTERNATIVES = {
     "H3": "this could also be explained by a confidential search or an incomplete posting — ask who the employer is",
     "H4": "this could also be explained by outsourcing or a rebrand — confirm the relationship on the official site",
     "H5": "this could also be explained by high-turnover roles that are always open — confirm the role is currently active",
+    "H6": "this could also be explained by a posting written for a non-English audience — have a fluent speaker verify it, since the automated analysis is English-centric",
+
     "M1": "this could also be explained by a short-form posting — ask for the full role description",
     "M2": "this could also be explained by a negotiable or variable package — ask for the range in writing",
     "M3": "this could also be explained by a non-native author or hasty drafting — weigh it only with other signals",

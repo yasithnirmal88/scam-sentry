@@ -107,3 +107,60 @@ def test_health_reports_model_provenance(tmp_path, monkeypatch):
     assert model["source"] == "synthetic"
     assert model["n_samples"] > 0
     assert model["validation_accuracy"] is not None
+
+
+def test_meta_records_runtime_sklearn_version():
+    import sklearn
+    from model_training import load_model_metadata
+    meta = load_model_metadata()
+    assert meta["sklearn_version"] == sklearn.__version__
+
+
+def test_meta_reports_holdout_metrics_and_honesty_note():
+    from model_training import load_model_metadata
+    meta = load_model_metadata()
+    metrics = meta["metrics"]
+    assert isinstance(metrics, dict)
+    for key in ("accuracy", "precision_fake", "recall_fake", "f1_fake",
+                "f1_macro", "f1_weighted", "n_train", "n_test"):
+        assert key in metrics, key
+    assert metrics["n_train"] + metrics["n_test"] == meta["n_samples"]
+    assert 0.0 <= metrics["accuracy"] <= 1.0
+    # honesty note must exist and must not overclaim real-world performance
+    assert meta["honesty_note"]
+    assert "not" in meta["honesty_note"].lower()
+
+
+def test_health_reports_version_metrics_and_honesty_note(tmp_path, monkeypatch):
+    with _client(tmp_path, monkeypatch) as c:
+        model = c.get("/api/health").get_json()["model"]
+    assert model["sklearn_version"]
+    assert model["metrics"]["accuracy"] is not None
+    assert model["honesty_note"]
+
+
+def test_synthetic_default_matches_config():
+    import config
+    import model_training
+    assert model_training._SYNTHETIC_N_PER_CLASS == config.SYNTHETIC_SAMPLES_PER_CLASS
+
+
+def test_training_pipeline_writes_artifacts_and_metadata(tmp_path):
+    """The retrain path runs end-to-end into a scratch dir (no repo mutation)
+    and writes a model card with metrics + provenance."""
+    import os
+    import pickle
+    import model_training
+
+    dataset = model_training.build_synthetic_dataset(n_per_class=12)
+    model_training.train(dataset, model_dir=str(tmp_path), source="synthetic")
+
+    for name in ("classifier.pkl", "tfidf.pkl", "meta.pkl"):
+        assert os.path.exists(tmp_path / name)
+
+    with open(tmp_path / "meta.pkl", "rb") as f:
+        meta = pickle.load(f)
+    assert meta["source"] == "synthetic"
+    assert meta["sklearn_version"]
+    assert meta["metrics"]["n_train"] + meta["metrics"]["n_test"] == meta["n_samples"]
+    assert "not" in meta["honesty_note"].lower()

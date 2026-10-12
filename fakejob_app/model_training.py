@@ -20,13 +20,17 @@ instead of real fraud characteristics.
 
 TO USE THE REAL KAGGLE DATASET INSTEAD:
   1. Download `fake_job_postings.csv` from Kaggle (EMSCAD dataset).
-  2. Place it at data/fake_job_postings.csv (columns must include
-     `description` / `company_profile` / `requirements` text and
-     `fraudulent` label).
-  3. Run:  python model_training.py --real data/fake_job_postings.csv
-  The script will preprocess it with the same feature pipeline and train
-  on the real data automatically, falling back to the synthetic set only
-  when no real dataset is supplied.
+  2. Place it at data/fake_job_postings.csv (recognised text columns include
+     title / company_profile / description / requirements / benefits; the
+     label column is `fraudulent`), or pass an explicit path.
+  3. Train:     python model_training.py --real data/fake_job_postings.csv
+     Evaluate:  python model_training.py --eval-only --real data/fake_job_postings.csv
+     Compare:   python model_training.py --compare --real data/fake_job_postings.csv
+
+Without `--real` the script trains on the synthetic set and the metadata says
+so. Real-data mode records `source="real"`, the dataset name, class
+distribution, and hold-out metrics in artifacts/meta.pkl. `--eval-only` and
+`--compare` never overwrite the committed artifacts.
 """
 
 import argparse
@@ -42,10 +46,12 @@ logger = logging.getLogger(__name__)
 
 import numpy as np
 import pandas as pd
+from sklearn import __version__ as _sklearn_version
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, accuracy_score
+from sklearn.metrics import (classification_report, accuracy_score,
+                             precision_recall_fscore_support, f1_score)
 from scipy.sparse import hstack, csr_matrix
 
 from fraud_features import extract_all_features, FEATURE_KEYS
@@ -59,6 +65,9 @@ try:
     _GBC_N_ESTIMATORS = config.GBC_N_ESTIMATORS
     _GBC_MAX_DEPTH = config.GBC_MAX_DEPTH
     _GBC_LEARNING_RATE = config.GBC_LEARNING_RATE
+    _GBC_LEARNING_RATE = config.GBC_LEARNING_RATE
+    _SYNTHETIC_N_PER_CLASS = config.SYNTHETIC_SAMPLES_PER_CLASS
+    _REAL_DATASET_PATH = config.REAL_DATASET_PATH
 except ImportError:  # standalone script use without config on path
     MODEL_DIR = os.path.join(os.path.dirname(__file__), "artifacts")
     _TFIDF_MAX_FEATURES = 800
@@ -66,6 +75,9 @@ except ImportError:  # standalone script use without config on path
     _GBC_N_ESTIMATORS = 120
     _GBC_MAX_DEPTH = 3
     _GBC_LEARNING_RATE = 0.08
+    _SYNTHETIC_N_PER_CLASS = 450
+    _REAL_DATASET_PATH = os.path.join(
+        os.path.dirname(__file__), "data", "fake_job_postings.csv")
 
 random.seed(42)
 np.random.seed(42)
@@ -309,12 +321,89 @@ def build_synthetic_dataset(n_per_class=450):
     return df
 
 
+# Columns commonly present in EMSCAD / Kaggle `fake_job_postings.csv`. Only
+# those actually present are used, so slightly different exports still work.
+_TEXT_COLUMN_CANDIDATES = (
+    "title", "company_profile", "description", "requirements", "benefits",
+    "location", "employment_type", "required_experience", "required_education",
+    "industry", "function",
+)
+_LABEL_COLUMN_CANDIDATES = ("fraudulent", "label", "is_fake", "is_fraudulent")
+# Rows whose combined text is shorter than this are treated as unusable.
+_MIN_REAL_TEXT_CHARS = 10
+
+
+def _build_text_column(df):
+    """Join whatever useful text columns exist into a single `text` field."""
+    cols = [c for c in _TEXT_COLUMN_CANDIDATES if c in df.columns]
+    if not cols:
+        raise ValueError(
+            "real dataset has no recognised text columns; expected at least "
+            "one of: " + ", ".join(_TEXT_COLUMN_CANDIDATES))
+    return (df[cols].fillna("").astype(str)
+            .apply(lambda row: " ".join(p.strip() for p in row if p.strip()),
+                   axis=1))
+
+
+def _find_label_column(df):
+    for col in _LABEL_COLUMN_CANDIDATES:
+        if col in df.columns:
+            return col
+    raise ValueError(
+        "real dataset has no label column; expected one of: "
+        + ", ".join(_LABEL_COLUMN_CANDIDATES))
+
+
 def load_real_dataset(path):
+    """Load and clean an EMSCAD-style CSV into `text` + integer `label`.
+
+    `label` is 1 for fraudulent postings and 0 for genuine ones. The text
+    field is built from whichever known columns are present (title,
+    company_profile, description, requirements, benefits, ...). Rows with an
+    unusable label or empty/too-short text are dropped, and duplicate texts
+    removed.
+
+    Raises FileNotFoundError (with placement instructions) when the file is
+    absent, and ValueError when required columns/classes are missing.
+    """
+    path = str(path)
+    if not os.path.exists(path):
+        raise FileNotFoundError(
+            "Real dataset not found at: %s\n"
+            "Download the EMSCAD/Kaggle 'fake_job_postings.csv', place it under "
+            "fakejob_app/data/fake_job_postings.csv, or pass an explicit path "
+            "with `--real /path/to/fake_job_postings.csv` (or set the "
+            "REAL_DATASET_PATH env var)." % path)
+
     df = pd.read_csv(path)
-    text_cols = [c for c in ["title", "company_profile", "description", "requirements", "benefits"]
-                 if c in df.columns]
-    df["text"] = df[text_cols].fillna("").agg(" ".join, axis=1)
-    df["label"] = df["fraudulent"].astype(int)
+    if df.empty:
+        raise ValueError("Real dataset at %s is empty." % path)
+
+    label_col = _find_label_column(df)
+    df = df.copy()
+    df["text"] = _build_text_column(df)
+    df["label"] = pd.to_numeric(df[label_col], errors="coerce")
+
+    before = len(df)
+    df = df[df["label"].isin([0, 1])]
+    df = df[df["text"].str.strip().str.len() >= _MIN_REAL_TEXT_CHARS]
+    df = df.drop_duplicates(subset=["text"]).reset_index(drop=True)
+    df["label"] = df["label"].astype(int)
+
+    if df.empty:
+        raise ValueError(
+            "Real dataset at %s has no usable rows after cleaning." % path)
+    if df["label"].nunique() < 2:
+        raise ValueError(
+            "Real dataset at %s has only one class after cleaning; need both "
+            "genuine and fraudulent postings to evaluate." % path)
+
+    n_fake = int((df["label"] == 1).sum())
+    n_genuine = int((df["label"] == 0).sum())
+    logger.info("Loaded real dataset '%s': %d usable rows "
+                "(genuine=%d, fake=%d); dropped %d invalid/duplicate.",
+                os.path.basename(path), len(df), n_genuine, n_fake,
+                before - len(df))
     return df[["text", "label"]]
 
 
@@ -335,7 +424,61 @@ def build_feature_matrix(texts, tfidf: TfidfVectorizer, fit=False):
     return combined
 
 
-def train(dataset: pd.DataFrame, model_dir=MODEL_DIR, source="synthetic"):
+def _compute_metrics(y_true, preds, n_train=None, n_test=None):
+    """Per-class + macro/weighted hold-out metrics. `Fake` is label 1."""
+    acc = accuracy_score(y_true, preds)
+    prec, rec, f1, support = precision_recall_fscore_support(
+        y_true, preds, labels=[0, 1], zero_division=0)
+    metrics = {
+        "accuracy": round(float(acc), 4),
+        "precision_fake": round(float(prec[1]), 4),
+        "recall_fake": round(float(rec[1]), 4),
+        "f1_fake": round(float(f1[1]), 4),
+        "precision_genuine": round(float(prec[0]), 4),
+        "recall_genuine": round(float(rec[0]), 4),
+        "f1_genuine": round(float(f1[0]), 4),
+        "f1_macro": round(float(f1_score(y_true, preds, average="macro",
+                                         zero_division=0)), 4),
+        "f1_weighted": round(float(f1_score(y_true, preds, average="weighted",
+                                            zero_division=0)), 4),
+        "support_genuine": int(support[0]),
+        "support_fake": int(support[1]),
+    }
+    if n_train is not None:
+        metrics["n_train"] = int(n_train)
+    if n_test is not None:
+        metrics["n_test"] = int(n_test)
+    return metrics
+
+
+def _log_metrics(metrics, source):
+    logger.info("Hold-out metrics (%s, Fake = positive class):", source)
+    logger.info("  accuracy=%.4f  precision=%.4f  recall=%.4f  f1=%.4f",
+                metrics["accuracy"], metrics["precision_fake"],
+                metrics["recall_fake"], metrics["f1_fake"])
+    logger.info("  f1_macro=%.4f  f1_weighted=%.4f  n_test=%s",
+                metrics["f1_macro"], metrics["f1_weighted"],
+                metrics.get("n_test"))
+
+
+def _log_honesty(source, dataset_name):
+    if source == "synthetic":
+        logger.info(
+            "HONESTY NOTE: the synthetic classes are near-separable, so these "
+            "metrics overstate real-world performance and are NOT a claim about "
+            "performance on real job postings.")
+    else:
+        logger.info(
+            "HONESTY NOTE: metrics come from a held-out split of real data "
+            "(%s). Real-world metrics are more meaningful than synthetic ones, "
+            "but they reflect that dataset's bias (largely English-language "
+            "postings) and are not a production fraud-detection claim. The "
+            "deterministic Risk Engine, not the ML model, sets the verdict; ML "
+            "is a supporting signal only.", dataset_name or "real data")
+
+
+def train(dataset: pd.DataFrame, model_dir=MODEL_DIR, source="synthetic",
+          dataset_name=None):
     X_text = dataset["text"].tolist()
     y = dataset["label"].values
 
@@ -363,25 +506,52 @@ def train(dataset: pd.DataFrame, model_dir=MODEL_DIR, source="synthetic"):
     clf.fit(X_train, y_train)
 
     preds = clf.predict(X_test)
-    acc = accuracy_score(y_test, preds)
-    report = classification_report(y_test, preds, target_names=["Genuine", "Fake"])
-    logger.info("Validation accuracy: %.4f\n%s", acc, report)
+    metrics = _compute_metrics(y_test, preds, n_train=X_train.shape[0],
+                               n_test=X_test.shape[0])
+    _log_metrics(metrics, source)
+    logger.info("Classification report:\n%s",
+                classification_report(y_test, preds,
+                                      target_names=["Genuine", "Fake"],
+                                      zero_division=0))
+    _log_honesty(source, dataset_name)
 
     with open(os.path.join(model_dir, "classifier.pkl"), "wb") as f:
         pickle.dump(clf, f)
     with open(os.path.join(model_dir, "tfidf.pkl"), "wb") as f:
         pickle.dump(tfidf, f)
 
+    if source == "synthetic":
+        honesty_note = (
+            "Metrics are measured on a held-out split of synthetic data whose "
+            "classes are near-separable; they are NOT an estimate of real-world "
+            "performance. The Risk Engine, not this model, sets the verdict.")
+    else:
+        honesty_note = (
+            "Metrics are measured on a held-out split of the real dataset "
+            "'%s'. Real-world numbers are more meaningful than synthetic ones, "
+            "but they reflect that dataset's bias (largely English-language "
+            "postings) and are not a production fraud-detection claim. The "
+            "deterministic Risk Engine, not this model, sets the verdict; ML is "
+            "a supporting signal only." % (dataset_name or "real data"))
+
+    n_fake = int((dataset["label"] == 1).sum())
+    n_genuine = int((dataset["label"] == 0).sum())
     meta = {
         "source": source,
+        "dataset": dataset_name or ("synthetic-generator" if source == "synthetic"
+                                    else "unknown"),
+        "class_distribution": {"genuine": n_genuine, "fake": n_fake},
         "estimator": "GradientBoostingClassifier",
+        "sklearn_version": _sklearn_version,
         "n_samples": len(dataset),
         "n_features": int(X.shape[1]),
-        "validation_accuracy": float(acc),
+        "validation_accuracy": float(metrics["accuracy"]),
+        "metrics": metrics,
         "trained_at_utc": datetime.now(timezone.utc).isoformat(),
         "n_estimators": _GBC_N_ESTIMATORS,
         "max_depth": _GBC_MAX_DEPTH,
         "learning_rate": _GBC_LEARNING_RATE,
+        "honesty_note": honesty_note,
     }
     with open(os.path.join(model_dir, "meta.pkl"), "wb") as f:
         pickle.dump(meta, f)
@@ -390,17 +560,76 @@ def train(dataset: pd.DataFrame, model_dir=MODEL_DIR, source="synthetic"):
     return clf, tfidf
 
 
+def load_artifacts(model_dir=MODEL_DIR):
+    """Load the persisted classifier + vectorizer (raises if absent)."""
+    with open(os.path.join(model_dir, "classifier.pkl"), "rb") as f:
+        clf = pickle.load(f)
+    with open(os.path.join(model_dir, "tfidf.pkl"), "rb") as f:
+        tfidf = pickle.load(f)
+    return clf, tfidf
+
+
+def evaluate_on_dataset(dataset: pd.DataFrame, model_dir=MODEL_DIR,
+                        test_size=0.2, dataset_name=None):
+    """Evaluate already-saved artifacts on a real dataset's held-out split.
+
+    Does NOT write artifacts. Returns the metrics dict. Used by `--eval-only`
+    so reviewers can report real-data metrics without overwriting the
+    committed model.
+    """
+    clf, tfidf = load_artifacts(model_dir)
+    X = build_feature_matrix(dataset["text"].tolist(), tfidf, fit=False)
+    y = dataset["label"].values
+    _, X_test, _, y_test = train_test_split(
+        X, y, test_size=test_size, random_state=42, stratify=y)
+    preds = clf.predict(X_test)
+    metrics = _compute_metrics(y_test, preds, n_test=X_test.shape[0])
+    _log_metrics(metrics, "real (eval-only)")
+    logger.info("Classification report:\n%s",
+                classification_report(y_test, preds,
+                                      target_names=["Genuine", "Fake"],
+                                      zero_division=0))
+    _log_honesty("real", dataset_name)
+    return metrics
+
+
+def compare_models(real_path, n_per_class=_SYNTHETIC_N_PER_CLASS):
+    """Train synthetic and real models into scratch dirs and log both metric
+    sets for side-by-side comparison. Never touches the committed artifacts."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as syn_dir, \
+            tempfile.TemporaryDirectory() as real_dir:
+        logger.info("=== SYNTHETIC-TRAINED MODEL (not a real-world estimate) ===")
+        syn = build_synthetic_dataset(n_per_class=n_per_class)
+        train(syn, model_dir=syn_dir, source="synthetic",
+              dataset_name="synthetic-generator")
+        logger.info("=== REAL-DATA-TRAINED MODEL (%s) ===",
+                    os.path.basename(str(real_path)))
+        real = load_real_dataset(real_path)
+        train(real, model_dir=real_dir, source="real",
+              dataset_name=os.path.basename(str(real_path)))
+    logger.info("Comparison complete. Real-data metrics are the meaningful "
+                "ones; synthetic metrics are only a pipeline sanity check. The "
+                "Risk Engine remains authoritative and ML stays a supporting "
+                "signal.")
+
+
 @lru_cache(maxsize=1)
 def load_model_metadata(model_dir=MODEL_DIR):
     """Model provenance for honest labeling. Never raises; reports absence."""
     base = {
         "available": False,
         "source": "unknown",
+        "dataset": None,
+        "class_distribution": None,
         "estimator": "unknown",
         "n_samples": 0,
         "n_features": 0,
         "validation_accuracy": None,
         "trained_at_utc": None,
+        "sklearn_version": None,
+        "metrics": None,
+        "honesty_note": None,
     }
     path = os.path.join(model_dir, "meta.pkl")
     if not os.path.exists(path):
@@ -416,19 +645,68 @@ def load_model_metadata(model_dir=MODEL_DIR):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--real", type=str, default=None,
-                         help="Path to real Kaggle fake_job_postings.csv (optional)")
-    parser.add_argument("--n_per_class", type=int, default=350,
-                         help="Synthetic samples per class if no real dataset given")
+    parser = argparse.ArgumentParser(
+        description="Train / evaluate the Scam Sentry hybrid classifier and "
+                    "write an honest model card (meta.pkl). The Risk Engine, "
+                    "not this model, sets the verdict.")
+    parser.add_argument("--real", nargs="?", const=_REAL_DATASET_PATH,
+                        default=None,
+                        help="Train on an EMSCAD/Kaggle fake_job_postings.csv. "
+                             "Pass a path, or use --real alone to read the "
+                             "default path (%s). Omit it for synthetic "
+                             "training." % _REAL_DATASET_PATH)
+    parser.add_argument("--n_per_class", type=int, default=_SYNTHETIC_N_PER_CLASS,
+                        help="Synthetic samples per class when no real dataset "
+                             "is given (default: config.SYNTHETIC_SAMPLES_PER_CLASS)")
+    parser.add_argument("--eval-only", action="store_true",
+                        help="Evaluate the CURRENT saved artifacts on the real "
+                             "dataset and print metrics; no retraining, no "
+                             "artifact writes.")
+    parser.add_argument("--compare", action="store_true",
+                        help="Train synthetic and real models in scratch dirs "
+                             "and print both metric sets; committed artifacts "
+                             "are left untouched.")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
-    if args.real and os.path.exists(args.real):
-        logger.info("Loading real dataset from %s ...", args.real)
-        df = load_real_dataset(args.real)
-        train(df, source="real")
+
+    def _load_real_or_die(path):
+        try:
+            return load_real_dataset(path)
+        except (FileNotFoundError, ValueError) as exc:
+            parser.error(str(exc))
+
+    if args.eval_only:
+        if not args.real:
+            parser.error("--eval-only requires --real [path] to know which "
+                         "real dataset to evaluate on.")
+        dataset = _load_real_or_die(args.real)
+        logger.info("EVAL-ONLY: evaluating the saved model in %s on %s "
+                    "(no artifacts will be modified).", MODEL_DIR, args.real)
+        evaluate_on_dataset(dataset, model_dir=MODEL_DIR,
+                            dataset_name=os.path.basename(str(args.real)))
+        logger.info("No artifacts were modified.")
+    elif args.compare:
+        if not args.real:
+            parser.error("--compare requires --real [path].")
+        compare_models(args.real, n_per_class=args.n_per_class)
+        logger.info("No artifacts were modified.")
+    elif args.real:
+        dataset = _load_real_or_die(args.real)
+        os.makedirs(MODEL_DIR, exist_ok=True)
+        logger.info("TRAINING MODE: real dataset (%s)", args.real)
+        train(dataset, source="real",
+              dataset_name=os.path.basename(str(args.real)))
+        logger.info("Done. artifacts/: classifier.pkl, tfidf.pkl, meta.pkl "
+                    "(source=real)")
     else:
-        logger.info("No real dataset supplied - generating balanced synthetic dataset...")
+        os.makedirs(MODEL_DIR, exist_ok=True)
+        logger.info("TRAINING MODE: synthetic (no --real dataset provided). "
+                    "The committed artifacts are synthetic-trained unless you "
+                    "pass --real [path]. Default real path: %s",
+                    _REAL_DATASET_PATH)
         df = build_synthetic_dataset(n_per_class=args.n_per_class)
-        train(df, source="synthetic")
+        logger.info("Generated %d balanced synthetic samples.", len(df))
+        train(df, source="synthetic", dataset_name="synthetic-generator")
+        logger.info("Done. artifacts/: classifier.pkl, tfidf.pkl, meta.pkl "
+                    "(source=synthetic)")

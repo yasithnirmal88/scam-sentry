@@ -25,6 +25,14 @@ Pipeline (matches the project proposal's workflow diagram):
                          |
                          v
         Explanation Engine (evidence-based, not raw SHAP words)
+
+Verdict ownership (do not conflate the two systems):
+  * Authoritative risk decision -> risk/indicators.py + risk/engine.py.
+    `classify()` reports the engine's verdict in `overall_risk_level`,
+    `risk_categories`, `key_indicators`, and `recommended_actions`.
+  * fraud_features.py + the hybrid ML score are a SUPPORTING signal only
+    (reported as `hybrid_score` / `prediction` / `risk_level` for backward
+    compatibility). They must never override or contradict the engine.
 """
 
 import logging
@@ -260,6 +268,10 @@ def classify(text, posted_at=None, use_llm=None):
     prediction = "Fake" if final_score >= config.FAKE_THRESHOLD else "Genuine"
     confidence = final_score if prediction == "Fake" else round(100 - final_score, 1)
 
+    # `risk_level` above is the HYBRID score band (legacy + ML) and is kept
+    # for backward compatibility only. It is a supporting signal: the
+    # authoritative verdict is `overall_risk_level`, computed by the Risk
+    # Engine further below.
     if final_score >= config.HIGH_RISK_THRESHOLD:
         risk_level = "HIGH"
     elif final_score >= config.MEDIUM_RISK_THRESHOLD:
@@ -267,6 +279,9 @@ def classify(text, posted_at=None, use_llm=None):
     else:
         risk_level = "LOW"
 
+    # Backward-compatible legacy indicator list (fraud_features). The
+    # authoritative, structured indicator list is `key_indicators` from the
+    # Risk Engine below; this one is retained so older clients keep working.
     indicators = [
         {
             "label": d["label"],
@@ -283,10 +298,13 @@ def classify(text, posted_at=None, use_llm=None):
     else:
         indicators_message = None
 
-    # ---- v1.0 Risk Assessment (primary, per Architecture Upgrade Spec) ----
-    # Indicator-driven verdict; hybrid score is a supporting signal only.
-    # Critical score-floor: any Critical indicator forces Critical level
-    # regardless of ML score (enforced inside assess_risk determination rules).
+    # ---- Risk Engine verdict (AUTHORITATIVE, source of truth) -------------
+    # The deterministic Risk Engine (risk/indicators.py + risk/engine.py)
+    # alone decides `overall_risk_level`, `risk_categories`, `key_indicators`,
+    # and `recommended_actions`. The hybrid ML score above is a supporting
+    # signal only and never overrides this: any Critical indicator forces a
+    # Critical level inside assess_risk's determination rules regardless of
+    # the ML/hybrid score.
     # (fired_early was already computed above for the hybrid floor; reuse it.)
     fired = fired_early
     assessment = assess_risk(fired)
@@ -394,10 +412,18 @@ def analyze_file():
                                   "JPG, JPEG, or PNG file."}), 400
 
     file_bytes = file.read()
+    if not file_bytes:
+        return jsonify({"error": "The uploaded file is empty."}), 400
     try:
         extracted_text, method = extract_text(file.filename, file_bytes)
-    except Exception as exc:
-        return jsonify({"error": f"Could not read the file: {exc}"}), 400
+    except ValueError as exc:
+        # Expected, user-facing failures (bad type, corrupt file, over the
+        # OCR page/pixel limits) carry a clean message.
+        return jsonify({"error": str(exc)}), 400
+    except Exception:
+        logger.exception("File extraction failed")
+        return jsonify({"error": "Could not read the uploaded file. Please "
+                                  "try a different PDF or image."}), 400
 
     result = classify(extracted_text)
     if "error" in result:
@@ -421,11 +447,16 @@ def _health_model_info():
     return {
         "available": meta.get("available", False),
         "source": meta.get("source"),
+        "dataset": meta.get("dataset"),
+        "class_distribution": meta.get("class_distribution"),
         "estimator": meta.get("estimator"),
         "n_samples": meta.get("n_samples"),
         "n_features": meta.get("n_features"),
         "validation_accuracy": meta.get("validation_accuracy"),
         "trained_at_utc": meta.get("trained_at_utc"),
+        "sklearn_version": meta.get("sklearn_version"),
+        "metrics": meta.get("metrics"),
+        "honesty_note": meta.get("honesty_note"),
     }
 
 # ---------------------------------------------------------------------------
