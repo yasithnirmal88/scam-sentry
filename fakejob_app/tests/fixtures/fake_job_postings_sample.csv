@@ -1,0 +1,17 @@
+job_id,title,location,company_profile,description,requirements,benefits,fraudulent
+1,Software Engineer,Remote,"Acme Corp builds reliable software.","We develop web applications and mentor engineers in a friendly team.","Four years of Python and SQL experience.","Health insurance and an annual bonus.",0
+2,Data Analyst,New York,"Northwind is an established analytics company.","Analyze datasets and mentor junior analysts on our team.","Two years of SQL and Python experience.","Dental insurance and a retirement plan.",0
+3,Product Manager,Austin,"Bright Labs is a stable product company.","Lead the roadmap and mentor a small engineering team.","Three years of product experience.","Medical insurance and a yearly bonus.",0
+4,Backend Engineer,Remote,"Cloudworks employs a large engineering team.","Build services in Python and mentor new engineers.","Experience with software and SQL required.","Health insurance, bonus, and flexibility.",0
+5,QA Engineer,Boston,"Quality First is a stable software company.","Test software releases and mentor the team on best practice.","Two years of testing experience.","Vision insurance and an annual bonus.",0
+6,Frontend Engineer,Seattle,"Pixel Studio builds software products.","Develop interfaces and mentor engineers on accessibility.","Three years of JavaScript experience.","Health insurance and a retirement plan.",0
+7,Machine Learning Engineer,Remote,"DataCore is an established company.","Train models in Python and mentor the engineering team.","Four years of machine learning and Python experience.","Medical insurance and a yearly bonus.",0
+8,Work From Home Assistant,Anywhere,,"Urgent hiring! Earn money weekly. Pay a small registration fee upfront to start.","No experience needed.","Weekly payment.",1
+9,Data Entry Clerk,Anywhere,,"Earn money fast. Send a registration fee via telegram to activate your account.","No experience needed.","Weekly payment by bank transfer.",1
+10,Package Handler,Remote,"","Immediate start. Pay an upfront registration fee and share your bank account.","No experience needed.","Daily payment.",1
+11,Online Assistant,Anywhere,"","Urgent! Earn money from home. Send a registration fee upfront through telegram.","No experience required.","Weekly payment.",1
+12,Customer Agent,Anywhere,,"Earn money now. A registration fee is required upfront; message us on telegram.","No experience needed.","Daily payment by bank transfer.",1
+13,Shipping Assistant,Remote,,"Hiring urgently. Pay a small upfront registration fee and give your bank account details.","No experience needed.","Weekly payment.",1
+14,Virtual Assistant,Anywhere,,"Earn money weekly. Send the registration fee upfront and contact us on telegram.","No experience required.","Weekly payment by bank transfer.",1
+15,,,,,,,1
+16,Odd Row,Anywhere,,"Some description here about a position.","None required.","None.",maybe

@@ -3,7 +3,7 @@
 import pytest
 
 import config
-from models.job import init_db, list_jobs
+from models.job import JobRecord, get_job, init_db, list_jobs, save_job
 from risk.actions import generate_actions
 from risk.engine import assess_risk
 from risk.freshness import freshness_status, job_age_days, parse_posted_at
@@ -86,5 +86,54 @@ def test_jobs_api_bad_limit_still_200(tmp_path, monkeypatch):
     init_db(config.DATABASE_PATH)
     import app as app_module
     app_module.app.config["TESTING"] = True
+    app_module.limiter.enabled = False
     with app_module.app.test_client() as client:
         assert client.get("/api/jobs?limit=abc&offset=-3").status_code == 200
+
+
+def test_db_connections_are_closed(tmp_path, monkeypatch):
+    """A regression guard for the sqlite connection leak: repeated calls must
+    not leave connections/fds open."""
+    import gc
+    import sqlite3
+    monkeypatch.setattr(config, "DATABASE_PATH", str(tmp_path / "leak.db"))
+    init_db(config.DATABASE_PATH)
+    for _ in range(50):
+        list_jobs(db_path=config.DATABASE_PATH)
+        get_job(1, db_path=config.DATABASE_PATH)
+    # Find any tracked connection that is still open.
+    gc.collect()
+    open_conns = 0
+    for obj in gc.get_objects():
+        if isinstance(obj, sqlite3.Connection):
+            try:
+                obj.execute("SELECT 1")
+                open_conns += 1
+            except sqlite3.ProgrammingError:
+                pass
+    assert open_conns == 0
+
+
+def test_db_write_persists_across_reconnect(tmp_path, monkeypatch):
+    """_connect no longer commits implicitly, so writers must commit. Prove a
+    written row survives the connection close and is visible on reconnect."""
+    monkeypatch.setattr(config, "DATABASE_PATH", str(tmp_path / "persist.db"))
+    init_db(config.DATABASE_PATH)
+    job_id = save_job(
+        JobRecord(title="Backend Engineer", company="Acme",
+                  url="https://example.com/job/1"),
+        db_path=config.DATABASE_PATH,
+    )
+    assert job_id > 0
+    reopened = get_job(job_id, db_path=config.DATABASE_PATH)
+    assert reopened is not None
+    assert reopened["title"] == "Backend Engineer"
+    assert reopened["company"] == "Acme"
+
+
+def test_normalize_url_rejects_dangerous_schemes():
+    from scanner.base import normalize_url
+    assert normalize_url("javascript:alert(1)") == ""
+    assert normalize_url("data:text/html,<script>1</script>") == ""
+    assert normalize_url("file:///etc/passwd") == ""
+    assert normalize_url("https://example.com/job/1") == "https://example.com/job/1"

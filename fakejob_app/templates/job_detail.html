@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=6">
 </head>
 <body>
 
@@ -61,6 +61,12 @@
             {% for cat in job.risk_categories %}
             <span class="sample-chip legit">{{ cat }}</span>
             {% endfor %}
+            {% if job.industry and job.industry != "Other" %}
+            <span class="sample-chip legit">Industry: {{ job.industry }}</span>
+            {% endif %}
+            {% if job.job_role and job.job_role != "Other" %}
+            <span class="sample-chip legit">Role: {{ job.job_role }}</span>
+            {% endif %}
           </div>
         </div>
         <div class="dial-container">
@@ -78,8 +84,13 @@
       <div class="metrics-grid">
         <div class="metric-card"><div class="metric-label">Hybrid Score</div><div class="metric-val">{{ (job.hybrid_score * 100) | round(1) }}%</div><div class="metric-meta">supporting signal</div></div>
         <div class="metric-card"><div class="metric-label">Rule Score</div><div class="metric-val">{{ (job.rule_score * 100) | round(1) }}%</div><div class="metric-meta">indicator weight</div></div>
-        <div class="metric-card"><div class="metric-label">ML Probability</div><div class="metric-val">{{ (job.ml_score * 100) | round(1) }}%</div><div class="metric-meta">GradientBoosting</div></div>
+        <div class="metric-card"><div class="metric-label">ML Probability</div><div class="metric-val">{{ (job.ml_score * 100) | round(1) }}%</div><div class="metric-meta">synthetic-trained &middot; supporting signal</div></div>
         <div class="metric-card"><div class="metric-label">Scanned At</div><div class="metric-val truncate">{{ job.scanned_at[:10] if job.scanned_at else "—" }}</div><div class="metric-meta">{{ job.source or "" }}</div></div>
+      </div>
+
+      <div class="disclaimer-callout" style="margin-bottom:14px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <p>The ML probability is a supporting signal from a model trained on a synthetic dataset; the risk verdict is set by the deterministic Risk Engine, never by the ML score.</p>
       </div>
 
       <div class="evidence-section">

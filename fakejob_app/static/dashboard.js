@@ -7,13 +7,64 @@
 const LEVELS = ["Critical", "High", "Medium", "Low"];
 const LEVEL_EMOJI = { Critical: "🚨", High: "🔴", Medium: "🟡", Low: "🟢" };
 
-const state = { jobs: [], risk: "", source: "", q: "" };
+const state = { jobs: [], risk: "", source: "", q: "", industry: "", role: "" };
 
 const groupsEl = document.getElementById("job-groups");
 const errorBox = document.getElementById("dash-error");
 const scanStatus = document.getElementById("scan-status");
 const scanBtn = document.getElementById("btn-scan");
 const scanLabel = document.getElementById("btn-scan-label");
+const industrySel = document.getElementById("filter-industry");
+const roleSel = document.getElementById("filter-role");
+
+function statusClass(status) {
+  const s = (status || "unknown").toLowerCase();
+  if (s === "success") return "status-ok";
+  if (s === "partial") return "status-partial";
+  if (s === "running") return "status-busy";
+  if (s === "failed") return "status-fail";
+  return "status-unknown";
+}
+
+function runRow(run) {
+  const el = document.createElement("div");
+  el.className = "scan-run";
+  const start = (run.started_at || "").replace("T", " ").slice(0, 16);
+  const finish = (run.finished_at || "").replace("T", " ").slice(0, 16);
+  const sources = (run.sources || []).join(" + ") || "unknown sources";
+  el.innerHTML = `
+    <div class="scan-run-head">
+      <span class="status-chip ${statusClass(run.status)}">${escapeHtml(run.status || "unknown")}</span>
+      <span class="scan-run-id">run #${run.id}</span>
+      <span class="scan-run-time">${escapeHtml(start)}${finish && finish !== start ? " &rarr; " + escapeHtml(finish) : ""}</span>
+    </div>
+    <div class="scan-run-meta">
+      <span>${run.stored} stored</span><span>${run.fetched} fetched</span>
+      <span>${run.skipped || 0} skipped</span><span>${run.duplicates || 0} duplicates</span>
+      <span class="scan-run-sources">${escapeHtml(sources)}</span>
+    </div>`;
+  return el;
+}
+
+async function loadHistory() {
+  const wrap = document.getElementById("scan-runs");
+  const empty = document.getElementById("history-empty");
+  const countBadge = document.getElementById("history-count");
+  if (!wrap) return;
+  try {
+    const res = await fetch("/api/scan/history?limit=15");
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to load scan history");
+    const runs = data.runs || [];
+    if (countBadge) countBadge.textContent = `${runs.length} run${runs.length === 1 ? "" : "s"}`;
+    wrap.innerHTML = "";
+    if (empty) empty.hidden = runs.length > 0;
+    runs.forEach((r) => wrap.appendChild(runRow(r)));
+  } catch (err) {
+    if (empty) empty.hidden = false;
+    if (empty) empty.querySelector("span").textContent = "Could not load scan history.";
+  }
+}
 
 function setScanning(active) {
   scanBtn.disabled = active;
@@ -50,12 +101,16 @@ function jobCard(job) {
   el.className = "job-card";
   el.href = `/dashboard/jobs/${job.id}`;
   const posted = (job.posted_at || "").slice(0, 10);
+  const taxonomy = `"${escapeHtml(job.industry || "Other")} \u203a ${escapeHtml(job.job_role || "Other")}"`;
+  const taxLine = (job.industry && job.industry !== "Other")
+    ? `<div class="job-tax">${taxonomy}</div>` : "";
   el.innerHTML = `
     <div class="job-card-top">
       <strong class="job-card-title">${escapeHtml(job.title || "Untitled role")}</strong>
       <span class="risk-pill ${pillClass(job.overall_risk_level)}">${LEVEL_EMOJI[job.overall_risk_level] || ""} ${escapeHtml(job.overall_risk_level)}</span>
     </div>
     <div class="job-card-meta">${escapeHtml(job.company || "Unknown company")}${job.location ? " &bull; " + escapeHtml(job.location) : ""}</div>
+    ${taxLine}
     <div class="job-card-foot">
       <span class="job-source">${escapeHtml(job.source || "")}</span>
       <span class="job-date">${escapeHtml(posted || "date unknown")}</span>
@@ -63,11 +118,87 @@ function jobCard(job) {
   return el;
 }
 
+// ---- Industry / role search sections -----------------------------------
+let TAXONOMY = { industries: {} };
+
+function rebuildRoleOptions() {
+  if (!roleSel) return;
+  const selected = state.industry;
+  let roles = [];
+  if (selected) {
+    roles = (TAXONOMY.industries[selected] || []).slice();
+  } else {
+    const seen = new Set();
+    Object.values(TAXONOMY.industries).forEach((list) => {
+      (list || []).forEach((r) => { if (!seen.has(r)) { seen.add(r); roles.push(r); } });
+    });
+    roles.sort();
+  }
+  roles.push("Other");
+  roleSel.innerHTML = "";
+  const any = document.createElement("option");
+  any.value = "";
+  any.textContent = "All roles";
+  roleSel.appendChild(any);
+  roles.forEach((r) => {
+    const opt = document.createElement("option");
+    opt.value = r;
+    opt.textContent = r;
+    roleSel.appendChild(opt);
+  });
+}
+
+function populateIndustryOptions() {
+  if (!industrySel) return;
+  industrySel.innerHTML = "";
+  const any = document.createElement("option");
+  any.value = "";
+  any.textContent = "All industries";
+  industrySel.appendChild(any);
+  Object.keys(TAXONOMY.industries).forEach((name) => {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    industrySel.appendChild(opt);
+  });
+}
+
+async function loadTaxonomy() {
+  try {
+    const res = await fetch("/api/taxonomy");
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to load industry/role options");
+    TAXONOMY = data || { industries: {} };
+    populateIndustryOptions();
+    rebuildRoleOptions();
+  } catch (err) {
+    // Options stay empty; industry/role filters then simply match nothing.
+  }
+}
+
+if (industrySel) {
+  industrySel.addEventListener("change", (e) => {
+    state.industry = e.target.value;
+    state.role = "";
+    if (roleSel) roleSel.value = "";
+    rebuildRoleOptions();
+    render();
+  });
+}
+if (roleSel) {
+  roleSel.addEventListener("change", (e) => {
+    state.role = e.target.value;
+    render();
+  });
+}
+
 function filteredJobs() {
   const q = state.q.trim().toLowerCase();
   return state.jobs.filter((j) => {
     if (state.risk && j.overall_risk_level !== state.risk) return false;
     if (state.source && j.source !== state.source) return false;
+    if (state.industry && (j.industry || "Other") !== state.industry) return false;
+    if (state.role && (j.job_role || "Other") !== state.role) return false;
     if (q && !`${j.title || ""} ${j.company || ""}`.toLowerCase().includes(q)) return false;
     return true;
   });
@@ -83,7 +214,8 @@ function render() {
     const list = byLevel[level] || [];
     section.querySelector(".group-count").textContent = `${list.length}`;
     // Hide empty groups only when a filter is active; otherwise show headers with 0.
-    const filtering = state.risk || state.source || state.q.trim();
+    const filtering = state.risk || state.source || state.q.trim()
+      || state.industry || state.role;
     section.style.display = filtering && list.length === 0 ? "none" : "";
     const wrap = section.querySelector(".job-cards");
     wrap.innerHTML = "";
@@ -167,8 +299,12 @@ function selectedSources() {
 // Filters
 document.querySelectorAll("#risk-tabs .tab-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
-    document.querySelectorAll("#risk-tabs .tab-btn").forEach((b) => b.classList.remove("active"));
+    document.querySelectorAll("#risk-tabs .tab-btn").forEach((b) => {
+      b.classList.remove("active");
+      b.setAttribute("aria-pressed", "false");
+    });
     btn.classList.add("active");
+    btn.setAttribute("aria-pressed", "true");
     state.risk = btn.dataset.risk || "";
     render();
   });
@@ -222,12 +358,17 @@ async function startScan(sources) {
       await pollUntilIdle();
       return;
     }
+    if (res.status === 401) {
+      scanStatus.textContent = "Unauthorized — this server requires a scan token (SCAN_API_TOKEN).";
+      throw new Error(data.error || "Scan failed: token required.");
+    }
     if (!res.ok && res.status !== 202) throw new Error(data.error || data.reason || "Scan failed");
     if (res.status === 202 || data.status === "running") {
       await pollUntilIdle();
     } else {
       scanStatus.textContent = `Done: ${data.stored} stored (${data.fetched} fetched).`;
       await loadJobs();
+      await loadHistory();
       await refreshScanStatus();
     }
   } catch (err) {
@@ -254,6 +395,10 @@ async function pollUntilIdle() {
     await new Promise((r) => setTimeout(r, 3000));
     const status = await refreshScanStatus();
     if (!status) break;
+    // Refresh the job groups + history on every tick so new listings appear
+    // live while the background scan stores them.
+    await loadJobs();
+    await loadHistory();
     if (!status.running) {
       const last = status.last_scan;
       if (last) {
@@ -272,4 +417,6 @@ async function pollUntilIdle() {
 }
 
 loadJobs();
+loadHistory();
 refreshScanStatus();
+loadTaxonomy();

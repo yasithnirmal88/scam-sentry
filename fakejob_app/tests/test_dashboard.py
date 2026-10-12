@@ -12,6 +12,7 @@ def page_client(tmp_path, monkeypatch):
     init_db(config.DATABASE_PATH)
     import app as app_module
     app_module.app.config["TESTING"] = True
+    app_module.limiter.enabled = False
     with app_module.app.test_client() as client:
         yield client
 

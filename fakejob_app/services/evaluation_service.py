@@ -41,7 +41,6 @@ def evaluate_job(title: str, company: str, location: str, description: str,
     if not combined or len(combined.strip()) < config.MIN_TEXT_LENGTH:
         raise ValueError("Not enough text was found to analyse. "
                          "Skipping this listing.")
-    metadata = {"posted_at": posted_at} if posted_at else None
     try:
         from app import classify  # deferred: app imports services, not vice versa
         # Scanned listings stay zero-token unless explicitly opted in; the
@@ -60,7 +59,7 @@ def evaluate_job(title: str, company: str, location: str, description: str,
         from risk.indicators import analyze_indicators
         from risk.verification import verify_employer
 
-        fired = analyze_indicators(combined, metadata)
+        fired = analyze_indicators(combined, {"posted_at": posted_at} if posted_at else None)
         assessment = assess_risk(fired)
         return {
             "overall_risk_level": assessment["overall_risk_level"],

@@ -314,6 +314,27 @@ function renderReport(data) {
   document.getElementById("company-val").textContent = data.company_detected || "Not identified";
   document.getElementById("source-val").textContent = data.source || "Text input";
 
+  // ML signal transparency: fill the "How the ML probability is derived"
+  // details block with provenance + raw vs calibrated numbers.
+  const mlNoteText = document.getElementById("ml-note-text");
+  if (mlNoteText) {
+    const raw = typeof data.ml_raw_probability === "number"
+      ? data.ml_raw_probability.toFixed(1) : "n/a";
+    const cal = data.calibration || {};
+    const meta = document.getElementById("ml-meta");
+    if (meta && cal.applied) meta.textContent = "calibrated &middot; supporting signal";
+    if (cal.applied) {
+      mlNoteText.textContent =
+        `${data.ml_note || "The ML probability is a supporting signal only; the verdict is set by the deterministic Risk Engine."} ` +
+        `Raw model output was ${raw}% and was shrunk ${Math.round((1 - (cal.shrink || 0)) * 100)}% toward a neutral prior ` +
+        `(${Math.round((cal.prior || 0) * 100)}%) before display.`;
+    } else {
+      mlNoteText.textContent =
+        `${data.ml_note || "The ML probability is a supporting signal only; the verdict is set by the deterministic Risk Engine."} ` +
+        `Raw model output (${raw}%) is shown uncalibrated (ML_CALIBRATION is off).`;
+    }
+  }
+
   // Risk summary + categories + confidence.
   const summaryEl = document.getElementById("risk-summary");
   if (summaryEl) summaryEl.textContent = data.summary || data.indicators_message || "Assessment complete.";

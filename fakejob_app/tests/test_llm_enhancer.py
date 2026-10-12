@@ -192,6 +192,7 @@ def test_classify_without_llm_keeps_engine_summary(monkeypatch):
 
 def test_classify_with_llm_merges_summary(monkeypatch):
     monkeypatch.setattr(config, "LLM_ENABLED", True)
+    monkeypatch.setattr(config, "SCAN_API_TOKEN", "test-token")
     monkeypatch.setattr("risk.llm_enhancer.enhance",
                         lambda rr, text, cfg=None: {
                             "summary": "LLM improved summary.",
@@ -209,6 +210,7 @@ def test_classify_with_llm_merges_summary(monkeypatch):
 
 def test_classify_llm_failure_falls_back(monkeypatch):
     monkeypatch.setattr(config, "LLM_ENABLED", True)
+    monkeypatch.setattr(config, "SCAN_API_TOKEN", "test-token")
 
     def boom(rr, text, cfg=None):
         raise RuntimeError("llm exploded")
