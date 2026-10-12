@@ -14,6 +14,15 @@ APP_DIR = os.path.dirname(__file__)
 ALLOWED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg"}
 MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB
 
+# ---------------------------------------------------------------------------
+# Upload / OCR hardening (DoS & resource-abuse controls). Uploads are
+# untrusted: bound how many PDF pages we read, cap the OCR rasterization DPI,
+# and cap the pixel budget of any single decoded image. All env-overridable.
+# ---------------------------------------------------------------------------
+MAX_PDF_PAGES = int(os.getenv("OCR_MAX_PDF_PAGES", "5"))
+PDF_OCR_DPI = int(os.getenv("OCR_PDF_DPI", "150"))
+MAX_IMAGE_PIXELS = int(os.getenv("OCR_MAX_IMAGE_PIXELS", "20000000"))
+
 MODEL_DIR = os.path.join(APP_DIR, "artifacts")
 MIN_TEXT_LENGTH = 15
 
@@ -24,6 +33,14 @@ ML_WEIGHT = 0.45
 # Score floors so a single decisive signal cannot be averaged away.
 CRITICAL_SCORE_FLOOR = 70
 STRONG_SCORE_FLOOR = 60
+
+# ML honesty (Phase 4): GradientBoosting probabilities are over-confident, and
+# the committed model is trained on a synthetic set. Pull the ML probability
+# toward a neutral prior so the ML signal never overstates itself; the rule
+# engine stays the source of truth. OFF restores the raw model output.
+ML_CALIBRATION = os.getenv("ML_CALIBRATION", "true").lower() == "true"
+ML_CALIBRATION_PRIOR = float(os.getenv("ML_CALIBRATION_PRIOR", "0.5"))
+ML_CALIBRATION_SHRINK = float(os.getenv("ML_CALIBRATION_SHRINK", "0.7"))
 
 # Legacy thresholds (kept for backward-compatible fields).
 FAKE_THRESHOLD = 50
@@ -37,6 +54,12 @@ GBC_N_ESTIMATORS = 120
 GBC_MAX_DEPTH = 3
 GBC_LEARNING_RATE = 0.08
 SYNTHETIC_SAMPLES_PER_CLASS = 450
+# Real-dataset (EMSCAD / fake_job_postings.csv) support. The committed model is
+# synthetic-trained; real mode is opt-in. Place the CSV at the default path
+# below, or override with the REAL_DATASET_PATH env var / `--real` CLI flag.
+REAL_DATASET_PATH = os.getenv(
+    "REAL_DATASET_PATH", os.path.join(APP_DIR, "data", "fake_job_postings.csv")
+)
 
 # Server settings (12-factor via env).
 FLASK_HOST = os.getenv("FLASK_HOST", "0.0.0.0")
@@ -49,6 +72,10 @@ LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 # Job Risk Scanner (Phase 1).
 DATABASE_PATH = os.getenv("SCAM_SENTRY_DB", os.path.join(APP_DIR, "scam_sentry.db"))
+# Persistent storage backend. When DATABASE_URL is set (Render / Neon /
+# Supabase Postgres), it is used instead of the local SQLite file. Empty =
+# SQLite (the local default).
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 SCANNER_TIMEOUT = int(os.getenv("SCANNER_TIMEOUT", "20"))
 SCANNER_DEFAULT_LIMIT = int(os.getenv("SCANNER_LIMIT", "20"))
 SCANNER_USER_AGENT = os.getenv("SCANNER_USER_AGENT", "ScamSentry/1.0 (+job-risk-research)")
@@ -68,6 +95,21 @@ SCANNER_RETRY_BACKOFF = float(os.getenv("SCANNER_RETRY_BACKOFF", "2"))
 # Freshness bands (days) for Ghost/Stale signals.
 FRESHNESS_STALE_DAYS = int(os.getenv("FRESHNESS_STALE_DAYS", "60"))
 FRESHNESS_VERY_STALE_DAYS = int(os.getenv("FRESHNESS_VERY_STALE_DAYS", "90"))
+
+# ---------------------------------------------------------------------------
+# Abuse & cost control (Phase 3). Always on; tune via env.
+# ---------------------------------------------------------------------------
+# Shared secret that must be sent as the `X-Scan-Token` header to trigger a
+# scan (POST /api/scan). Empty = no-token dev/demo mode: scans run open only
+# while the LLM layer is off (`LLM_ENABLED=false`, no spend / no off-box text);
+# `_assert_secure_startup` refuses to boot with LLM_ENABLED=true unless a token
+# is set. Production must set a long random value.
+SCAN_API_TOKEN = os.getenv("SCAN_API_TOKEN", "").strip()
+# Per-IP allowed request rate on the analysis endpoints and on the scan-trigger
+# endpoint. Flask-Limiter parses these (e.g. "30/minute"). The app refuses to
+# boot the LLM layer unless both are set.
+RATE_LIMIT_ANALYZE = os.getenv("RATE_LIMIT_ANALYZE", "30/minute").strip()
+RATE_LIMIT_SCAN = os.getenv("RATE_LIMIT_SCAN", "5/minute").strip()
 
 # ---------------------------------------------------------------------------
 # Optional LLM enhancement layer (OpenAI-compatible chat/completions).

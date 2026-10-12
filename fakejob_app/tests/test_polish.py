@@ -15,6 +15,7 @@ def web_client(tmp_path, monkeypatch):
     init_db(config.DATABASE_PATH)
     import app as app_module
     app_module.app.config["TESTING"] = True
+    app_module.limiter.enabled = False
     with app_module.app.test_client() as client:
         yield client
 
@@ -24,6 +25,9 @@ def test_security_headers(web_client):
     assert res.headers.get("X-Content-Type-Options") == "nosniff"
     assert res.headers.get("X-Frame-Options") == "SAMEORIGIN"
     assert "Referrer-Policy" in res.headers
+    csp = res.headers.get("Content-Security-Policy")
+    assert csp and "default-src 'self'" in csp
+    assert "script-src 'self'" in csp and "frame-ancestors 'self'" in csp
 
 
 def test_upload_too_large_returns_json(web_client):
@@ -59,6 +63,8 @@ def test_dashboard_no_welcome_when_jobs_exist(web_client):
 def test_safe_defaults():
     assert config.SCAN_ENABLED is False
     assert config.FLASK_DEBUG is False
+    assert config.SCAN_API_TOKEN == ""
+    assert config.RATE_LIMIT_ANALYZE and config.RATE_LIMIT_SCAN
 
 
 def test_deploy_files_exist():
@@ -66,12 +72,15 @@ def test_deploy_files_exist():
     env_example = os.path.join(root, ".env.example")
     dockerfile = os.path.join(root, "Dockerfile")
     assert os.path.exists(env_example)
-    assert "SCAN_ENABLED" in open(env_example).read()
+    env_content = open(env_example).read()
+    for key in ("SCAN_ENABLED", "SCAN_API_TOKEN", "RATE_LIMIT_ANALYZE", "RATE_LIMIT_SCAN"):
+        assert key in env_content, key
     assert os.path.exists(dockerfile)
     content = open(dockerfile).read()
     assert "gunicorn" in content and "app:app" in content
     reqs = open(os.path.join(root, "requirements.txt")).read()
     assert "gunicorn" in reqs
+    assert "Flask-Limiter" in reqs
     readme = open(os.path.join(root, "README.md")).read()
     for keyword in ("/dashboard", "SCAN_ENABLED", "/api/scan", "remoteok",
                     "arbeitnow", "jobicy", "pytest", "gunicorn", ".env.example"):

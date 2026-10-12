@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=6">
 </head>
 <body>
 
@@ -53,7 +53,7 @@
     </div>
 
     <!-- Scan status strip -->
-    <div class="metrics-grid dash-status">
+    <div class="metrics-grid dash-status" aria-live="polite">
       <div class="metric-card"><div class="metric-label">Total Jobs Stored</div><div class="metric-val" id="total-jobs">{{ total }}</div><div class="metric-meta">across all sources</div></div>
       <div class="metric-card"><div class="metric-label">Last Scan</div><div class="metric-val truncate" id="last-scan-time">{{ (last_scan.finished_at[:16] if last_scan and last_scan.finished_at else "Never") | replace("T", " ") }}</div><div class="metric-meta" id="last-scan-detail">{% if last_scan %}{{ last_scan.stored }} stored &bull; {{ last_scan.fetched }} fetched{% else %}no scan recorded yet{% endif %}</div></div>
       <div class="metric-card"><div class="metric-label">Last Scan Status</div><div class="metric-val" id="last-scan-status">{% if last_scan %}{{ last_scan.status }}{% else %}—{% endif %}</div><div class="metric-meta">success / partial / failed</div></div>
@@ -87,13 +87,20 @@
     <section class="card dash-controls">
       <div class="dash-filters">
         <div class="tab-switcher" role="tablist" id="risk-tabs">
-          <button type="button" class="tab-btn active" data-risk="">All</button>
+          <button type="button" class="tab-btn active" data-risk="" aria-pressed="true">All</button>
           <button type="button" class="tab-btn" data-risk="Critical">🚨 Critical</button>
           <button type="button" class="tab-btn" data-risk="High">🔴 High</button>
           <button type="button" class="tab-btn" data-risk="Medium">🟡 Medium</button>
           <button type="button" class="tab-btn" data-risk="Low">🟢 Low</button>
         </div>
+        <div class="dash-browse-title">Search by Industry &amp; Job Role</div>
         <div class="dash-filter-row">
+          <select id="filter-industry" class="dash-select" aria-label="Filter by industry">
+            <option value="">All industries</option>
+          </select>
+          <select id="filter-role" class="dash-select" aria-label="Filter by job role">
+            <option value="">All roles</option>
+          </select>
           <select id="filter-source" class="dash-select" aria-label="Filter by source">
             <option value="">All sources</option>
             {% for s in sources %}
@@ -115,12 +122,12 @@
           </span>
           <span id="btn-scan-label">Run New Scan</span>
         </button>
-        <span class="file-status-text" id="scan-status">Idle — last scan results shown below.</span>
+        <span class="file-status-text" id="scan-status" aria-live="polite">Idle — last scan results shown below.</span>
       </div>
     </section>
 
     <!-- Grouped job sections -->
-    <div id="job-groups">
+    <div id="job-groups" aria-live="polite">
       {% for level in ["Critical", "High", "Medium", "Low"] %}
       <section class="card dash-group" data-group="{{ level }}">
         <div class="evidence-header">
@@ -131,6 +138,18 @@
       </section>
       {% endfor %}
     </div>
+
+    <!-- Recent scan runs -->
+    <section class="card dash-history" aria-label="Recent scan runs">
+      <div class="evidence-header">
+        <h3>Recent Scan Runs</h3>
+        <span class="evidence-badge" id="history-count">0 runs</span>
+      </div>
+      <div class="no-evidence-box" id="history-empty">
+        <span>No scan runs recorded yet — run a scan and every run will be listed here.</span>
+      </div>
+      <div class="scan-runs" id="scan-runs"></div>
+    </section>
 
     <div class="error-alert" id="dash-error" hidden></div>
 
@@ -143,6 +162,6 @@
     </div>
   </footer>
 
-  <script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+  <script src="{{ url_for('static', filename='dashboard.js') }}?v=6"></script>
 </body>
 </html>

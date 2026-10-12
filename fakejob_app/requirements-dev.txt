@@ -1,4 +1,6 @@
-# Dev / test dependencies for Scam Sentry.
+# Development / test / lint dependencies for Scam Sentry.
+# Layers on top of the runtime set so runtime and dev deps stay separated.
 -r requirements.txt
-pytest>=8.0
-pytest-cov>=5.0
+pytest>=9.0,<10.0
+pytest-cov>=7.0,<8.0
+pyflakes>=3.4,<4.0
