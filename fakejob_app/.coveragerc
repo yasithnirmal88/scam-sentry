@@ -1,0 +1,17 @@
+# Coverage configuration for Scam Sentry.
+# Measure application source only (tests are excluded), and fail the build
+# below a realistic gate. The gate is set a few points under the current
+# suite so a benign dip does not create noise, while a real regression does.
+[run]
+source = .
+omit =
+    tests/*
+
+[report]
+fail_under = 78
+show_missing = True
+skip_covered = True
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
+    raise NotImplementedError

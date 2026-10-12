@@ -8,9 +8,12 @@ Rules (exact order):
   2. >= 2 High -> High
   3. 1 High + >= 2 Medium -> High
   4. 1 High alone -> Medium
-  5. >= 2 Medium -> Medium
+  5. >= 2 Medium with at least one substantive Medium (or >= 3 Medium)
+       -> Medium; two weak Mediums (e.g. M2 + M4) stay Low
   6. H5 alone -> Medium
-  7. Only Low or none -> Low
+  7. H6 fired (non-English / unverifiable content) -> at least Medium: the
+       engine cannot honestly call unparseable text "low risk"
+  8. Only Low or none -> Low
 
 Confidence reflects evidence strength, not the level:
   High   -> multiple strong/direct indicators agree
@@ -33,6 +36,12 @@ from typing import Any
 from risk.language import alternative_note
 
 logger = logging.getLogger("scam_sentry.risk_engine")
+
+# Indicators whose individual evidence is weak enough that they must not
+# accumulate into a Medium verdict on their own (e.g. "no salary stated",
+# "no contact path"). They only reach Medium when a substantive Medium is
+# present too (or the pile is large).
+WEAK_MEDIUM_IDS = {"M2", "M4"}
 
 # A snippet this long is treated as a direct quote of the offending text
 # rather than a vague or synthetic note.
@@ -65,13 +74,23 @@ def determine_level(fired):
     # 4. 1 High alone -> Medium
     if n_high == 1:
         return "Medium"
-    # 5. >= 2 Medium -> Medium
-    if n_medium >= 2:
+    # 5. >= 2 Medium -> Medium, but weak "absence-based" Mediums (e.g. no
+    #    salary stated, no contact path) must not reach Medium on their own:
+    #    require at least one substantive Medium, or three Mediums total.
+    medium_ids = [d.get("id") for d in (fired or [])
+                  if d.get("severity") == "Medium"]
+    if n_medium >= 2 and (
+        n_medium >= 3 or any(i not in WEAK_MEDIUM_IDS for i in medium_ids)
+    ):
         return "Medium"
     # 6. H5 alone -> Medium
     if ids == {"H5"}:
         return "Medium"
-    # 7. Only Low or none -> Low
+    # 7. H6 (non-English / mixed-language content) means the English-centric
+    # patterns could not evaluate the posting; never return a confident Low.
+    if "H6" in ids:
+        return "Medium"
+    # 8. Only Low or none -> Low
     return "Low"
 
 

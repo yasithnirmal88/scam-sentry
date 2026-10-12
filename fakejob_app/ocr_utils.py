@@ -5,17 +5,29 @@ Extracts text from uploaded PDF and image files.
 
 - Images (JPG/JPEG/PNG) -> Tesseract OCR (pytesseract).
 - PDFs -> try direct text extraction first (pdfplumber); if the PDF is a
-  scanned document with no extractable text layer, rasterize each page
-  and run OCR on it (pdf2image + pytesseract).
+  scanned document with no extractable text layer, rasterize a bounded
+  number of pages and run OCR on them (pdf2image + pytesseract).
+
+Hardening: uploaded files are untrusted, so processing is bounded to protect
+the worker from memory/CPU exhaustion:
+
+- at most ``config.MAX_PDF_PAGES`` pages are read or rasterized per PDF;
+- rasterized pages never exceed ``config.PDF_OCR_DPI`` DPI;
+- any single decoded image is limited to ``config.MAX_IMAGE_PIXELS`` pixels.
+
+Files that exceed these limits fail with a clear ``ValueError`` (the API
+turns that into a 400 JSON response) instead of crashing the worker.
 """
 
 import io
+import os
+import shutil
+
 import pytesseract
 import pdfplumber
 from PIL import Image
 
-import os
-import shutil
+import config
 
 # On Windows, locate tesseract executable if not in system PATH
 if not shutil.which("tesseract"):
@@ -30,31 +42,83 @@ except Exception:
     PDF2IMAGE_AVAILABLE = False
 
 
+# A PDF whose extracted text layer is at least this long is treated as a real
+# text layer, and OCR is skipped.
+_TEXT_LAYER_MIN_CHARS = 30
+
+
+def _enforce_pixel_budget(width, height, what="image"):
+    """Reject any raster whose pixel count would blow the memory budget."""
+    if width * height > config.MAX_IMAGE_PIXELS:
+        raise ValueError(
+            f"The {what} is too large to process ({width}x{height} pixels; "
+            f"limit is {config.MAX_IMAGE_PIXELS}). Please upload a smaller "
+            f"or lower-resolution file."
+        )
+
+
 def extract_text_from_image(file_bytes):
-    image = Image.open(io.BytesIO(file_bytes))
+    try:
+        image = Image.open(io.BytesIO(file_bytes))
+    except Exception as exc:
+        raise ValueError(f"Could not read the image: {exc}") from exc
+
+    # Dimensions are known from the header, so this rejects an over-budget
+    # image before any pixels are decoded.
+    _enforce_pixel_budget(image.width, image.height, "image")
+
     if image.mode != "RGB":
         image = image.convert("RGB")
-    text = pytesseract.image_to_string(image)
+    try:
+        text = pytesseract.image_to_string(image)
+    except Exception as exc:
+        raise ValueError(f"OCR could not be completed: {exc}") from exc
     return text.strip()
 
 
 def extract_text_from_pdf(file_bytes):
-    text_parts = []
-    with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
-        for page in pdf.pages:
-            page_text = page.extract_text() or ""
-            text_parts.append(page_text)
-    combined = "\n".join(text_parts).strip()
+    try:
+        pdf = pdfplumber.open(io.BytesIO(file_bytes))
+    except Exception as exc:
+        raise ValueError(f"Could not read the PDF: {exc}") from exc
 
-    if len(combined) >= 30:
+    with pdf:
+        total_pages = len(pdf.pages)
+        if total_pages == 0:
+            raise ValueError("The PDF contains no pages.")
+        # Cap the number of pages we read to bound time and memory.
+        pages = pdf.pages[: config.MAX_PDF_PAGES]
+        text_parts = [page.extract_text() or "" for page in pages]
+        combined = "\n".join(text_parts).strip()
+
+    if len(combined) >= _TEXT_LAYER_MIN_CHARS:
         return combined, "text-layer"
 
-    # Fallback: scanned PDF with no text layer -> OCR each page image.
+    # Fallback: scanned PDF with no text layer -> OCR a bounded number of
+    # pages at a bounded DPI.
     if PDF2IMAGE_AVAILABLE:
+        last_page = min(total_pages, config.MAX_PDF_PAGES)
+        try:
+            images = convert_from_bytes(
+                file_bytes,
+                dpi=config.PDF_OCR_DPI,
+                first_page=1,
+                last_page=last_page,
+            )
+        except Exception as exc:
+            if combined:
+                return combined, "text-layer"
+            raise ValueError(f"Could not render the PDF for OCR: {exc}") from exc
+
         ocr_parts = []
-        images = convert_from_bytes(file_bytes, dpi=200)
         for img in images:
-            ocr_parts.append(pytesseract.image_to_string(img))
+            _enforce_pixel_budget(img.width, img.height, "PDF page")
+            try:
+                ocr_parts.append(pytesseract.image_to_string(img))
+            except Exception as exc:
+                if combined:
+                    return combined, "text-layer"
+                raise ValueError(f"OCR could not be completed: {exc}") from exc
         ocr_text = "\n".join(ocr_parts).strip()
         if ocr_text:
             return ocr_text, "ocr"
