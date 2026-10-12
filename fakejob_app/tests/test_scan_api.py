@@ -134,6 +134,17 @@ def test_list_jobs_industry_role_filters(api_client):
     assert [j["id"] for j in body["jobs"]] == [health]
 
 
+def test_list_jobs_keyword_matches_description(api_client):
+    """The dashboard's keyword box filters server-side via ``q``; that search
+    must cover the description, not just title/company (otherwise a role name
+    that only appears in the body would show no results)."""
+    jid = _seed()
+    body = api_client.get("/api/jobs", query_string={"q": "pytest"}).get_json()
+    assert [j["id"] for j in body["jobs"]] == [jid]
+    body = api_client.get("/api/jobs", query_string={"q": "nonexistentterm"}).get_json()
+    assert body["jobs"] == []
+
+
 def test_taxonomy_endpoint(api_client):
     body = api_client.get("/api/taxonomy")
     assert body.status_code == 200
