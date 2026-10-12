@@ -92,6 +92,29 @@ SCAN_LIMIT = int(os.getenv("SCAN_LIMIT", str(SCANNER_DEFAULT_LIMIT)))
 SCANNER_RETRIES = int(os.getenv("SCANNER_RETRIES", "2"))
 SCANNER_RETRY_BACKOFF = float(os.getenv("SCANNER_RETRY_BACKOFF", "2"))
 
+# ---------------------------------------------------------------------------
+# Company-board scanners (Greenhouse / Lever / Ashby). These vendors expose a
+# public, no-auth, read-only JSON board per company. There is no global "all
+# jobs" endpoint, so each scanner walks a configurable list of public board
+# tokens. Override with a comma-separated env var; the defaults below are
+# stable public boards used only as sane starting points.
+# ---------------------------------------------------------------------------
+GREENHOUSE_BOARDS = [s.strip() for s in os.getenv(
+    "GREENHOUSE_BOARDS", "stripe,gitlab,coinbase,databricks,vercel,reddit"
+).split(",") if s.strip()]
+LEVER_BOARDS = [s.strip() for s in os.getenv(
+    "LEVER_BOARDS", "dnb,ppgreatplains,leversys").split(",") if s.strip()]
+ASHBY_BOARDS = [s.strip() for s in os.getenv(
+    "ASHBY_BOARDS", "openai,ramp,notion,linear").split(",") if s.strip()]
+# Cap how many boards a single board-scanner fetches per scan (keeps a large
+# --limit from fanning out into dozens of requests).
+SCANNER_MAX_BOARDS = int(os.getenv("SCANNER_MAX_BOARDS", "6"))
+
+# Working Nomads is a public, no-auth JSON feed that can be slow to respond.
+# Keep a per-source floor so the shared default timeout does not cause a
+# spurious empty result.
+WORKINGNOMADS_TIMEOUT = int(os.getenv("WORKINGNOMADS_TIMEOUT", "45"))
+
 # Freshness bands (days) for Ghost/Stale signals.
 FRESHNESS_STALE_DAYS = int(os.getenv("FRESHNESS_STALE_DAYS", "60"))
 FRESHNESS_VERY_STALE_DAYS = int(os.getenv("FRESHNESS_VERY_STALE_DAYS", "90"))

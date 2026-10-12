@@ -32,8 +32,13 @@ _TRACKING_PARAMS = {"utm_source", "utm_medium", "utm_campaign", "utm_term",
 
 
 def http_get(url: str, params: dict | None = None,
-             timeout: int | None = None) -> requests.Response:
-    """GET with retries + shared User-Agent. Raises the last error if all fail."""
+             timeout: int | None = None,
+             accept: str = "application/json") -> requests.Response:
+    """GET with retries + shared User-Agent. Raises the last error if all fail.
+
+    `accept` overrides the Accept header for non-JSON sources (e.g. RSS/XML);
+    the default preserves the previous JSON-only behaviour.
+    """
     attempts = max(1, config.SCANNER_RETRIES + 1)
     last_exc: Exception | None = None
     for attempt in range(1, attempts + 1):
@@ -42,7 +47,7 @@ def http_get(url: str, params: dict | None = None,
                 url,
                 params=params,
                 headers={"User-Agent": config.SCANNER_USER_AGENT,
-                         "Accept": "application/json"},
+                         "Accept": accept},
                 timeout=timeout or config.SCANNER_TIMEOUT,
             )
             resp.raise_for_status()
@@ -141,6 +146,24 @@ class BaseScanner(ABC):
 
 # Registry — new sources self-register via decorator.
 SCANNERS: dict[str, Callable[[], BaseScanner]] = {}
+
+
+def iter_boards(tokens: list[str], fetch_board: Callable[[str], list["NormalizedJob"]],
+                limit: int, max_boards: int) -> list["NormalizedJob"]:
+    """Collect jobs across company-board tokens with per-board isolation.
+
+    `fetch_board(token)` returns normalized jobs for one board. A failure on a
+    single board is logged and skipped so the rest of the boards still return.
+    """
+    collected: list[NormalizedJob] = []
+    for token in tokens[: max(1, max_boards)]:
+        if len(collected) >= limit:
+            break
+        try:
+            collected.extend(fetch_board(token) or [])
+        except Exception as exc:  # one bad board must not kill the scanner
+            logger.warning("Board %r failed: %s", token, exc)
+    return collected[: max(1, limit)]
 
 
 def register(name: str) -> Callable[[type[BaseScanner]], type[BaseScanner]]:

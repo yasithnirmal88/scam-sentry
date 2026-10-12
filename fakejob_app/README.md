@@ -33,7 +33,9 @@ next steps.
 ## What Scam Sentry does NOT do
 
 - No absolute fake/real verdicts — only evidence-backed risk levels.
-- No LinkedIn scraping (and no authenticated or paywalled sources).
+- No LinkedIn scraping and no authenticated or paywalled sources. Automatic
+  scanners use public, no-auth endpoints only; LinkedIn is manual analysis
+  only (paste/upload).
 - No browser automation — liveness is inferred from posting dates and
   wording, not live page checks.
 - No accounts, no email alerts, no auto-applying — it never acts on your behalf.
@@ -48,9 +50,12 @@ next steps.
 - **Hybrid scoring**: transparent rule score blended with a
   `GradientBoostingClassifier` (TF-IDF + engineered fraud features) as a
   supporting signal — never a black box.
-- **Scanners** (`scanner/`): RemoteOK, Remotive, Arbeitnow, Jobicy (all free
-  public JSON APIs, no auth). Modular `BaseScanner` + registry — adding a
-  source is one subclass.
+- **Scanners** (`scanner/`): ten automatic sources — RemoteOK, Remotive,
+  Arbeitnow, Jobicy, Himalayas, Working Nomads, LaraJobs, Greenhouse, Lever,
+  Ashby. Every automatic scanner reads a **public, no-auth** JSON/RSS endpoint
+  (no keys, OAuth, cookies, login, or browser automation). Modular
+  `BaseScanner` + registry — adding a source is one subclass. LinkedIn is
+  **manual analysis only** (paste/upload) and is never bulk-scraped.
 - **Storage** (`models/job.py` + `models/storage.py`): SQLite by default;
   when `DATABASE_URL` is set, the same public API runs on Postgres (Render /
   Neon / Supabase free tier). Jobs upsert by normalized URL and every scan is
@@ -219,14 +224,60 @@ scheduler never blocks the web app, and only one scan runs at a time
 
 ## Available sources
 
-| Source | Type | Auth |
-|---|---|---|
-| RemoteOK | Public JSON API | none |
-| Remotive | Public JSON API | none |
-| Arbeitnow | Public JSON API | none |
-| Jobicy | Public JSON API | none |
+All automatic scanners use **public, no-auth, read-only** endpoints — no API
+keys, OAuth, cookies, logins, or browser automation. Ten sources are active:
 
-No LinkedIn scraping, by design.
+| Source | Auth | Type | Status |
+|---|---|---|---|
+| RemoteOK | none | Public JSON API | active |
+| Remotive | none | Public JSON API | active |
+| Arbeitnow | none | Public JSON API | active |
+| Jobicy | none | Public JSON API | active |
+| Himalayas | none | Public JSON API | active |
+| Working Nomads | none | Public JSON API | active |
+| LaraJobs | none | Public RSS feed | active |
+| Greenhouse | none | Public company-board JSON | active |
+| Lever | none | Public company-board JSON | active |
+| Ashby | none | Public company-board JSON | active |
+
+`GET /api/sources` returns the live list; the dashboard's source filter,
+`SCAN_SOURCES`, and `python scan.py --list-sources` all use these same names.
+
+### Endpoints & limitations
+
+| Source | Endpoint | Response | Key fields | Notes |
+|---|---|---|---|---|
+| RemoteOK | `https://remoteok.com/api` | JSON array | position, company, description, url, epoch | first element is legal metadata (skipped) |
+| Remotive | `https://remotive.com/api/remote-jobs` | JSON object | title, company_name, candidate_required_location, description, url, publication_date | honors `?limit=` |
+| Arbeitnow | `https://arbeitnow.com/api/job-board-api` | JSON object | title, company_name, location, description, url, created_at | |
+| Jobicy | `https://jobicy.com/api/v2/remote-jobs` | JSON object | jobTitle, companyName, jobGeo, jobDescription, url, pubDate | `?count=` |
+| Himalayas | `https://himalayas.app/jobs/api` | JSON object | title, companyName, locationRestrictions, description, applicationLink, pubDate | `?limit=`; cursor pagination available |
+| Working Nomads | `https://www.workingnomads.com/api/exposed_jobs/` | JSON array | title, company_name, location, description, url, pub_date | can be slow; per-source timeout floor |
+| LaraJobs | `https://larajobs.com/feed` | RSS 2.0 | title, link, company, location, content:encoded, pubDate | namespace-agnostic parse |
+| Greenhouse | `https://boards-api.greenhouse.io/v1/boards/{board}/jobs?content=true` | JSON object | title, company_name, location.name, content, absolute_url, first_published | walks `GREENHOUSE_BOARDS`; `content` is HTML-escaped |
+| Lever | `https://api.lever.co/v0/postings/{board}?mode=json` | JSON array | text, categories.location, descriptionPlain, hostedUrl, createdAt | walks `LEVER_BOARDS` |
+| Ashby | `https://api.ashbyhq.com/posting-api/job-board/{board}` | JSON object | title, location, isRemote, publishedAt, jobUrl, descriptionPlain | walks `ASHBY_BOARDS` |
+
+The Greenhouse/Lever/Ashby vendors expose only **per-company** boards (no
+global feed), so each board-scanner walks a configurable list of public board
+tokens — `GREENHOUSE_BOARDS`, `LEVER_BOARDS`, `ASHBY_BOARDS` (comma-separated,
+env-overridable; `SCANNER_MAX_BOARDS` caps how many are fetched per run). A
+board that fails is skipped and logged without aborting the scan.
+
+### Why no LinkedIn (and other skipped sources)
+
+- **LinkedIn is manual analysis only** — paste or upload a single posting into
+  the analyzer. It is **never** bulk-scraped: LinkedIn's terms prohibit
+  automated scraping, its listings require login, and there is no no-auth
+  public jobs API, so an automatic scanner would need cookies/browser
+  automation, which this project rejects.
+- Sources evaluated and skipped because they need credentials or block
+  scripted no-auth access (they fail the "public, no-auth, stable" test):
+  USAJobs (requires an API key), The Muse (blocked without a key in practice),
+  We Work Remotely RSS (403 to non-browser clients), SmartRecruiters public
+  boards (return empty results for public tokens), and feeds that now require
+  a key (e.g. Adzuna, Jooble, Reed, Findwork). A source is added only when it
+  is reliably reachable with **no** authentication.
 
 ## API overview
 
