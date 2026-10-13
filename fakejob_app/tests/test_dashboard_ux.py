@@ -79,9 +79,43 @@ def test_api_scan_history_after_a_scan_run(history_client):
     run_scan(sources=["remoteok"], limit_per_source=1)
     runs = history_client.get("/api/scan/history").get_json()["runs"]
     assert len(runs) == 1
-    assert runs[0]["status"] in ("success", "partial", "failed")
+    assert runs[0]["status"] in ("success", "partial", "empty", "failed")
     assert runs[0]["stored"] >= 0
     assert scheduler.get_status()["running"] is False
+
+
+def test_scan_history_surfaces_empty_status(history_client):
+    record_scan_run({
+        "started_at": "2026-03-01T00:00:00+00:00",
+        "finished_at": "2026-03-01T00:00:10+00:00",
+        "sources": {"remoteok": 0}, "fetched": 0, "evaluated": 0,
+        "stored": 0, "skipped": 0, "duplicates": 0,
+        "status": "empty", "errors": {},
+    })
+    runs = history_client.get("/api/scan/history").get_json()["runs"]
+    assert runs[0]["status"] == "empty"
+    assert runs[0]["stored"] == 0
+
+
+def test_dashboard_maps_empty_status_to_a_chip():
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    js = (root / "static" / "dashboard.js").read_text(encoding="utf-8")
+    css = (root / "static" / "style.css").read_text(encoding="utf-8")
+    assert "status-empty" in js
+    assert ".status-empty" in css
+
+
+def test_dashboard_uses_filtered_and_global_totals():
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    js = (root / "static" / "dashboard.js").read_text(encoding="utf-8")
+    html = (root / "templates" / "dashboard.html").read_text(encoding="utf-8")
+    # The global "Total Jobs Stored" card reads global_total; the filtered
+    # matching count is surfaced separately via #filter-summary.
+    assert "data.global_total" in js
+    assert "data.total" in js
+    assert 'id="filter-summary"' in html
 
 
 def test_dashboard_pages_carry_phase5_markup(history_client):
@@ -103,14 +137,23 @@ def test_dashboard_pages_carry_phase5_markup(history_client):
     assert 'id="ml-note-text"' in home
 
 
-def test_dashboard_scan_flow_needs_no_token(history_client, monkeypatch):
-    """Dashboard-style trigger: POST /api/scan with no X-Scan-Token header
-    must be authorized in the no-token dev/demo mode (LLM disabled)."""
+def test_dashboard_scan_flow_needs_no_token_when_anonymous_enabled(
+        history_client, monkeypatch):
+    """Local dev/demo: with SCAN_ALLOW_ANONYMOUS=true and no token, the
+    dashboard-style trigger (no X-Scan-Token header) is authorized."""
     monkeypatch.setattr(config, "SCAN_API_TOKEN", "")
-    monkeypatch.setattr(config, "LLM_ENABLED", False)
+    monkeypatch.setattr(config, "SCAN_ALLOW_ANONYMOUS", True)
     res = history_client.post(
         "/api/scan", json={"sources": ["bogus"]})
     assert res.status_code == 400  # authorized: reached source validation
+
+
+def test_dashboard_scan_flow_fail_closed_by_default(history_client, monkeypatch):
+    """Default hardening: no token + anonymous off => dashboard trigger 401s."""
+    monkeypatch.setattr(config, "SCAN_API_TOKEN", "")
+    monkeypatch.setattr(config, "SCAN_ALLOW_ANONYMOUS", False)
+    res = history_client.post("/api/scan", json={"sources": ["bogus"]})
+    assert res.status_code == 401
 
 
 def test_job_detail_carries_ml_honesty_note(history_client):

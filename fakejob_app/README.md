@@ -190,20 +190,26 @@ EMSCAD/Kaggle dataset if you have it. See **ML honesty** below.
 gunicorn --bind 0.0.0.0:5000 --workers 1 --timeout 120 app:app
 ```
 
-Or with Docker:
+Or with Docker (runs as the non-root `appuser`, ships a `/api/health`
+`HEALTHCHECK`, and keeps the SQLite DB on the `/data` volume):
 
 ```bash
 cd fakejob_app
 docker build -t scam-sentry .
-docker run -p 5000:5000 -e SCAN_ENABLED=true scam-sentry
+docker run -p 5000:5000 -e SCAN_ENABLED=true -v scam-sentry-data:/data scam-sentry
 ```
+
+The image defaults `SCAM_SENTRY_DB=/data/scam_sentry.db`; omit the `-v` volume
+for an ephemeral DB, or pass `-e DATABASE_URL=...` to use Postgres instead.
 
 ## Running a scan
 
 - **UI**: open `/dashboard`, pick sources, click **Run New Scan**
   (progress + auto-refresh; safe to leave the page).
 - **API**: `POST /api/scan` → `202` (async); poll `GET /api/scan/status`.
-  Add `?sync=1` to wait for completion.
+  Add `?sync=1` to wait for completion. This endpoint is fail-closed: send a
+  matching `X-Scan-Token` header, or set `SCAN_ALLOW_ANONYMOUS=true` for a
+  local demo (see [Abuse & cost control](#abuse--cost-control)).
 - **CLI** (cron-friendly): `python scan.py --sources remotive jobicy --limit 10`
   - Cron example (every 6 hours):
     `0 */6 * * * cd /path/to/fakejob_app && python scan.py >> scan.log 2>&1`
@@ -285,7 +291,7 @@ board that fails is skipped and logged without aborting the scan.
 |---|---|---|
 | `/api/analyze/text` | POST `{"text": "..."}` | Single-job risk report |
 | `/api/analyze/file` | POST multipart `file` | Single-job risk report (OCR) |
-| `/api/jobs?risk_level=&source=&industry=&role=&q=&limit=&offset=` | GET | Scanned jobs + totals + per-level counts (`industry`/`role` filter by the auto-classified taxonomy fields) |
+| `/api/jobs?risk_level=&source=&industry=&role=&q=&limit=&offset=` | GET | Scanned jobs + per-level counts (`industry`/`role` filter by the auto-classified taxonomy fields). `total` is the count matching the current filters; `global_total` is the unfiltered count across all sources |
 | `/api/jobs/<id>` | GET | One stored job with full risk report |
 | `/api/scan` | POST `{"sources": [...], "limit": N}` + `X-Scan-Token` header | Async scan → `202`; `?sync=1` to wait. `401` without a valid `SCAN_API_TOKEN`, `429` when over the rate limit |
 | `/api/scan/status` | GET | Running/idle + last recorded run |
@@ -305,9 +311,12 @@ See `.env.example`. Highlights:
 | `LOG_LEVEL` | `INFO` | Python log level |
 | `SCAM_SENTRY_DB` | `scam_sentry.db` | SQLite file |
 | `DATABASE_URL` | *(empty)* | Postgres connection string. When set, it takes precedence over the SQLite file (Render/Neon/Supabase). Leave empty for local SQLite |
-| `SCAN_API_TOKEN` | *(empty)* | Shared secret required by `POST /api/scan` (sent in the `X-Scan-Token` header). Empty = the endpoint rejects every request |
+| `SCAN_API_TOKEN` | *(empty)* | Shared secret required by `POST /api/scan` (sent in the `X-Scan-Token` header). Empty = fail-closed: the endpoint rejects every request unless `SCAN_ALLOW_ANONYMOUS=true` |
+| `SCAN_ALLOW_ANONYMOUS` | `false` | Dev/demo only: allow unauthenticated scans when `SCAN_API_TOKEN` is empty. Ignored when a token is set; never enable on a public deployment |
 | `RATE_LIMIT_ANALYZE` | `30/minute` | Per-IP rate limit on `/api/analyze/*` (Flask-Limiter syntax) |
 | `RATE_LIMIT_SCAN` | `5/minute` | Per-IP rate limit on `POST /api/scan` |
+| `RATE_LIMIT_READ` | `240/minute` | Per-IP rate limit on the public read endpoints (`/api/jobs*`, `/api/scan/status`, `/api/scan/history`, `/api/sources`, `/api/taxonomy`, `/dashboard*`) |
+| `TRUSTED_PROXY_HOPS` | `1` | Number of reverse-proxy hops trusted for `X-Forwarded-For` when resolving the client IP (rate-limit identity). `1` fits Render's single proxy; set `0` when exposed directly |
 | `SCAN_ENABLED` | `false` | Background scheduler on/off |
 | `SCAN_INTERVAL_HOURS` | `6` | Scheduler interval |
 | `SCAN_RUN_ON_STARTUP` | `true` | First scan shortly after boot |
@@ -323,20 +332,33 @@ See `.env.example`. Highlights:
 
 ## Abuse & cost control
 
-- **Scan trigger is private when a token is configured.** `POST /api/scan`
-  requires an `X-Scan-Token` header whose value matches `SCAN_API_TOKEN` —
-  otherwise `401`. With the token left **empty** the scan endpoint falls into
-  the no-token *dev/demo mode* and runs open **only while the LLM layer is off**
-  (`LLM_ENABLED=false`, i.e. no spend and no text leaves the box); if
-  `LLM_ENABLED=true` the fail-closed startup guard demands a token, so a
-  spend-enabled server can never run open. The dashboard sends no token at
-  all (no token UI), so it scans without one in dev/demo mode and shows the
-  server's `401` message if a deployment configures a token.
+- **Scan trigger is fail-closed by default.** `POST /api/scan` requires an
+  `X-Scan-Token` header whose value matches `SCAN_API_TOKEN` — otherwise `401`.
+  With the token left **empty** the endpoint still rejects every request unless
+  you explicitly opt into anonymous scans with `SCAN_ALLOW_ANONYMOUS=true`
+  (dev/demo only). The anonymous flag is ignored when a token is set, and the
+  fail-closed startup guard still refuses to boot with `LLM_ENABLED=true`
+  without a token — so a spend-enabled server can never run open.
+- **Enabling anonymous scans for a local demo:** set
+  `SCAN_ALLOW_ANONYMOUS=true` (and leave `SCAN_API_TOKEN` empty). The dashboard
+  sends no token (there is no token UI), so this is the intended way to click
+  **Run New Scan** locally; without it the dashboard shows the server's `401`
+  message. Never enable the flag on a public deployment — set a token instead.
 - **Per-IP rate limiting** on the costliest endpoints (`/api/analyze/text`,
   `/api/analyze/file`, and `/api/scan`) via Flask-Limiter. Defaults:
   `RATE_LIMIT_ANALYZE=30/minute`, `RATE_LIMIT_SCAN=5/minute`; over the limit
   the API answers `429` with a JSON error. Counters live in process memory
   (per worker on a multi-worker gunicorn).
+- **Read endpoints are lightly limited** (`RATE_LIMIT_READ=240/minute`) so bulk
+  scraping is blunted without throttling normal use. The limit is applied to
+  `/api/jobs`, `/api/jobs/<id>`, `/api/scan/status`, `/api/scan/history`,
+  `/api/sources`, `/api/taxonomy`, and the `/dashboard` pages, and is set well
+  above the write limits so live scan polling is never throttled.
+- **Real client IP behind a proxy.** `TRUSTED_PROXY_HOPS` (default `1`) wraps
+  the app in Werkzeug's `ProxyFix` so `request.remote_addr` — and the limiter's
+  identity — is the real client from `X-Forwarded-For` rather than the proxy.
+  Set it to `0` when the app is exposed directly (no proxy) so a spoofed
+  `X-Forwarded-For` cannot evade the limiter; local dev needs no change.
 - **Content-Security-Policy** is sent on every response (`default-src 'self'`,
   static JS/CSS same-origin, Google Fonts allowed for the styled pages).
 - **Fail-closed LLM startup:** with `LLM_ENABLED=true` (the only path that

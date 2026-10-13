@@ -155,6 +155,94 @@ def test_run_scan_history_and_dedup(tmp_path, monkeypatch):
     assert last and last["status"] == "partial" and last["stored"] == 1
 
 
+def test_run_scan_all_empty_is_empty_not_success(tmp_path, monkeypatch):
+    import services.scanner_service as svc
+
+    class EmptyScanner:
+        name = "empty"
+
+        def safe_fetch(self, limit=20):
+            return []
+
+    monkeypatch.setattr(svc, "get_scanner", lambda name, **k: EmptyScanner())
+    db = str(tmp_path / "empty.db")
+    summary = svc.run_scan(sources=["empty"], limit_per_source=5, db_path=db)
+    assert summary["fetched"] == 0 and summary["stored"] == 0
+    assert summary["status"] == "empty"
+    assert summary["status"] != "success"
+    assert summary["errors"] == {}
+    assert summary["empty_sources"] == ["empty"]
+    assert get_last_scan(db)["status"] == "empty"
+
+
+def test_run_scan_normal_store_is_success(tmp_path, monkeypatch):
+    import services.scanner_service as svc
+    from scanner.base import NormalizedJob
+
+    jobs = [NormalizedJob(title="Backend Dev", company="Acme", location="Remote",
+                          description="Build reliable Python and Postgres services.",
+                          url="https://example.com/jobs/1", source="s1")]
+
+    class FakeScanner:
+        name = "s1"
+
+        def safe_fetch(self, limit=20):
+            return list(jobs)
+
+    def fake_evaluate(title, company, location, description, posted_at=None):
+        return {"overall_risk_level": "Low", "risk_categories": [], "confidence": "Low",
+                "summary": "ok", "key_indicators": [], "recommended_actions": [],
+                "employer_verification": {}, "hybrid_score": 0.1, "rule_score": 0.1,
+                "ml_score": 0.1}
+
+    monkeypatch.setattr(svc, "get_scanner", lambda name, **k: FakeScanner())
+    monkeypatch.setattr(svc, "evaluate_job", fake_evaluate)
+    db = str(tmp_path / "ok.db")
+    summary = svc.run_scan(sources=["s1"], limit_per_source=5, db_path=db)
+    assert summary["stored"] == 1
+    assert summary["status"] == "success"
+    assert get_last_scan(db)["status"] == "success"
+
+
+def test_run_scan_all_sources_fail_is_failed(tmp_path, monkeypatch):
+    import services.scanner_service as svc
+
+    def boom(name, **k):
+        raise ValueError("unknown source")
+
+    monkeypatch.setattr(svc, "get_scanner", boom)
+    db = str(tmp_path / "fail.db")
+    summary = svc.run_scan(sources=["x", "y"], limit_per_source=5, db_path=db)
+    assert summary["fetched"] == 0 and summary["stored"] == 0
+    assert summary["status"] == "failed"
+    assert set(summary["errors"]) == {"x", "y"}
+    assert get_last_scan(db)["status"] == "failed"
+
+
+def test_run_scan_fetched_but_nothing_stored_is_empty(tmp_path, monkeypatch):
+    import services.scanner_service as svc
+    from scanner.base import NormalizedJob
+
+    jobs = [NormalizedJob(title="t", company="", location="",
+                          description="hi", url="https://example.com/tiny", source="s1")]
+
+    class FakeScanner:
+        name = "s1"
+
+        def safe_fetch(self, limit=20):
+            return list(jobs)
+
+    def too_short(*a, **k):
+        raise ValueError("too short")
+
+    monkeypatch.setattr(svc, "get_scanner", lambda name, **k: FakeScanner())
+    monkeypatch.setattr(svc, "evaluate_job", too_short)
+    db = str(tmp_path / "short.db")
+    summary = svc.run_scan(sources=["s1"], limit_per_source=5, db_path=db)
+    assert summary["fetched"] == 1 and summary["stored"] == 0
+    assert summary["status"] == "empty"
+
+
 # --- scheduler ---
 
 @pytest.fixture()
@@ -211,6 +299,48 @@ def test_trigger_rejected_while_running(sched_env, monkeypatch):
     assert second["accepted"] is False
     assert sched_env.is_running()
     release.set()
+
+
+def _wait_until(predicate, timeout=5.0):
+    import time
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.02)
+    return predicate()
+
+
+def _scheduler_alive():
+    import services.scheduler as sched
+    return sched._sched_thread is not None and sched._sched_thread.is_alive()
+
+
+def test_scheduler_can_restart_after_stop(monkeypatch):
+    """F-08 regression: start -> stop -> start must resume, not stay stopped."""
+    import services.scheduler as sched
+
+    monkeypatch.setattr(config, "SCAN_RUN_ON_STARTUP", False)  # no real scan
+
+    # Tidy up any leftover loop from another test.
+    sched.stop_background()
+    assert _wait_until(lambda: not _scheduler_alive())
+
+    assert sched.start_background(interval_hours=24) is True
+    assert _scheduler_alive()
+    assert sched.start_background(interval_hours=24) is False  # already running
+
+    sched.stop_background()
+    assert _wait_until(lambda: not _scheduler_alive())
+
+    # The bug: the stop flag was never cleared, so this second start silently
+    # never ran. It must now succeed and actually enter the loop.
+    assert sched.start_background(interval_hours=24) is True
+    assert sched._stop_event.is_set() is False
+    assert _scheduler_alive()
+
+    sched.stop_background()
+    assert _wait_until(lambda: not _scheduler_alive())
 
 
 # --- async scan API ---

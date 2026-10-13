@@ -23,6 +23,7 @@ function statusClass(status) {
   if (s === "partial") return "status-partial";
   if (s === "running") return "status-busy";
   if (s === "failed") return "status-fail";
+  if (s === "empty") return "status-empty";
   return "status-unknown";
 }
 
@@ -311,8 +312,18 @@ async function loadJobs() {
         el.textContent = counts[k.charAt(0).toUpperCase() + k.slice(1)];
       }
     });
+    // "Total Jobs Stored" is a global figure ("across all sources"), so it
+    // must not be overwritten by the filtered result count.
     const totalEl = document.getElementById("total-jobs");
-    if (totalEl && data.total != null) totalEl.textContent = data.total;
+    if (totalEl && data.global_total != null) totalEl.textContent = data.global_total;
+    const summaryEl = document.getElementById("filter-summary");
+    if (summaryEl) {
+      const shown = state.jobs.length;
+      const matching = data.total != null ? data.total : shown;
+      summaryEl.textContent = matching === 0
+        ? "No jobs match the current filters"
+        : `Showing ${shown} of ${matching} matching job${matching === 1 ? "" : "s"}`;
+    }
     render();
     dismissWelcomeIfJobs();
   } catch (err) {

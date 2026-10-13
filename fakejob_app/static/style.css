@@ -1304,6 +1304,11 @@ textarea::placeholder {
   opacity: 0.75;
   margin-top: 2px;
 }
+.dash-filter-summary {
+  font-size: 0.82rem;
+  opacity: 0.7;
+  min-height: 1em;
+}
 .dash-select,
 .dash-search {
   font: inherit;
@@ -1463,6 +1468,7 @@ textarea::placeholder {
 .status-partial { background: rgba(245, 158, 11, 0.18); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.35); }
 .status-fail { background: rgba(244, 63, 94, 0.18); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.35); }
 .status-busy { background: rgba(6, 182, 212, 0.18); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.35); }
+.status-empty { background: rgba(148, 163, 184, 0.16); color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.32); }
 .status-unknown { background: rgba(255, 255, 255, 0.08); color: #94a3b8; border: 1px solid rgba(255, 255, 255, 0.15); }
 .ml-note {
   font-size: 0.85rem;

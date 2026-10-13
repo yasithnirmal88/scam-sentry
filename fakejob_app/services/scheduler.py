@@ -28,7 +28,7 @@ _lock = threading.Lock()
 _running = False
 _thread: threading.Thread | None = None
 _stop_event = threading.Event()
-_started = False
+_sched_thread: Optional[threading.Thread] = None
 
 
 def is_running() -> bool:
@@ -106,21 +106,26 @@ def _wait_for_idle() -> None:
 
 def start_background(interval_hours: float | None = None, limit: int | None = None,
                      db_path: Optional[str] = None) -> bool:
-    """Start the interval scheduler thread. Returns False if already started."""
-    global _started
+    """Start the interval scheduler thread. Returns False if already running.
+
+    The stop flag is cleared here so a scheduler that was stopped can be
+    started again (start -> stop -> start)."""
+    global _sched_thread
     with _lock:
-        if _started:
+        if _sched_thread is not None and _sched_thread.is_alive():
             return False
-        _started = True
-    hours = interval_hours or config.SCAN_INTERVAL_HOURS
-    t = threading.Thread(target=_loop, args=(hours, limit or config.SCAN_LIMIT, db_path),
-                         name="scam-sentry-scheduler", daemon=True)
-    t.start()
+        _stop_event.clear()
+        hours = interval_hours or config.SCAN_INTERVAL_HOURS
+        _sched_thread = threading.Thread(
+            target=_loop, args=(hours, limit or config.SCAN_LIMIT, db_path),
+            name="scam-sentry-scheduler", daemon=True)
+        _sched_thread.start()
     logger.info("Scheduler enabled: every %.2fh (run-on-startup=%s)", hours, config.SCAN_RUN_ON_STARTUP)
     return True
 
 
 def stop_background() -> None:
+    """Signal the interval loop to stop. Safe to call when it isn't running."""
     _stop_event.set()
 
 
