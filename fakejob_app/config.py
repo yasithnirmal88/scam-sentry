@@ -123,16 +123,34 @@ FRESHNESS_VERY_STALE_DAYS = int(os.getenv("FRESHNESS_VERY_STALE_DAYS", "90"))
 # Abuse & cost control (Phase 3). Always on; tune via env.
 # ---------------------------------------------------------------------------
 # Shared secret that must be sent as the `X-Scan-Token` header to trigger a
-# scan (POST /api/scan). Empty = no-token dev/demo mode: scans run open only
-# while the LLM layer is off (`LLM_ENABLED=false`, no spend / no off-box text);
-# `_assert_secure_startup` refuses to boot with LLM_ENABLED=true unless a token
-# is set. Production must set a long random value.
+# scan (POST /api/scan). Fail-closed by default: when no token is set the scan
+# endpoint rejects every request unless SCAN_ALLOW_ANONYMOUS=true is set
+# explicitly (dev/demo only). Production must set a long random value.
 SCAN_API_TOKEN = os.getenv("SCAN_API_TOKEN", "").strip()
+# Explicit opt-in for open, unauthenticated scans (local dev/demos only). OFF
+# by default so a deployment with no token cannot be triggered by anyone. When
+# SCAN_API_TOKEN is set this flag is ignored (the token always wins). The LLM
+# startup guard still refuses to boot with LLM_ENABLED=true and no token, so
+# the spend path can never be left open. Never enable on a public deployment.
+SCAN_ALLOW_ANONYMOUS = os.getenv("SCAN_ALLOW_ANONYMOUS", "false").lower() == "true"
 # Per-IP allowed request rate on the analysis endpoints and on the scan-trigger
 # endpoint. Flask-Limiter parses these (e.g. "30/minute"). The app refuses to
 # boot the LLM layer unless both are set.
 RATE_LIMIT_ANALYZE = os.getenv("RATE_LIMIT_ANALYZE", "30/minute").strip()
 RATE_LIMIT_SCAN = os.getenv("RATE_LIMIT_SCAN", "5/minute").strip()
+# Per-IP limit for the public *read* endpoints (jobs list/detail, scan
+# status/history, sources, taxonomy, dashboard pages). Deliberately well above
+# the write endpoints (analyze/scan) and sized so live scan polling and normal
+# dashboard browsing are never throttled; it still blunts bulk scraping.
+RATE_LIMIT_READ = os.getenv("RATE_LIMIT_READ", "240/minute").strip()
+# Reverse-proxy trust for the real client IP. Render (and similar PaaS) place a
+# single proxy in front of the app, so request.remote_addr is the proxy, not the
+# user, and every request lands in one rate-limit bucket. Trust this many
+# X-Forwarded-For hops when resolving the client IP (1 = Render's one proxy).
+# Set to 0 when the app is exposed directly (no proxy) so a spoofed
+# X-Forwarded-For cannot evade the limiter. Local dev sends no proxy headers and
+# needs no change.
+TRUSTED_PROXY_HOPS = max(0, int(os.getenv("TRUSTED_PROXY_HOPS", "1")))
 
 # ---------------------------------------------------------------------------
 # Optional LLM enhancement layer (OpenAI-compatible chat/completions).

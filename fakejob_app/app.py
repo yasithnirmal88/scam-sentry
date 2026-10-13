@@ -45,6 +45,7 @@ from flask import Flask, request, jsonify, render_template
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from scipy.sparse import hstack, csr_matrix
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 import config
 import fraud_features
@@ -70,6 +71,32 @@ logger = logging.getLogger("scam_sentry")
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
+
+
+def apply_proxy_fix(flask_app, hops=None):
+    """Resolve the real client IP when running behind a trusted reverse proxy.
+
+    Render (and similar PaaS) put a single proxy in front of the app, so
+    ``request.remote_addr`` is the proxy's address and per-IP rate limits would
+    lump every visitor into one bucket. Wrapping the WSGI app in ``ProxyFix``
+    makes ``REMOTE_ADDR`` (and therefore Flask-Limiter's ``get_remote_address``)
+    the real client IP taken from the right-most trusted ``X-Forwarded-For`` hop.
+
+    Only the client IP is derived from proxy headers (``x_for``); proto/host/
+    port/prefix are left untouched. ``hops<=0`` disables the fix so a
+    directly-exposed app cannot be tricked by a spoofed ``X-Forwarded-For``.
+    Local development sends no proxy headers, so the peer address is used
+    unchanged either way.
+    """
+    hops = config.TRUSTED_PROXY_HOPS if hops is None else hops
+    if hops and hops > 0:
+        flask_app.wsgi_app = ProxyFix(
+            flask_app.wsgi_app, x_for=hops,
+            x_proto=0, x_host=0, x_port=0, x_prefix=0)
+    return flask_app
+
+
+apply_proxy_fix(app)
 
 # Per-IP rate limits (abuse & cost control). Limits are callables so they can
 # be tuned via env/config without restarting; tests toggle `limiter.enabled`.
@@ -464,55 +491,66 @@ def _health_model_info():
 # ---------------------------------------------------------------------------
 
 @app.route("/api/jobs", methods=["GET"])
+@limiter.limit(lambda: config.RATE_LIMIT_READ)
 def api_list_jobs():
     """List scanned jobs. Query params: risk_level, source, industry, role,
     q, limit, offset."""
     try:
+        filters = {
+            "risk_level": request.args.get("risk_level"),
+            "source": request.args.get("source"),
+            "industry": request.args.get("industry"),
+            "role": request.args.get("role"),
+            "query": request.args.get("q"),
+        }
         jobs = list_jobs(
-            risk_level=request.args.get("risk_level"),
-            source=request.args.get("source"),
-            industry=request.args.get("industry"),
-            role=request.args.get("role"),
-            query=request.args.get("q"),
             limit=request.args.get("limit", 50),
             offset=request.args.get("offset", 0),
+            **filters,
         )
         return jsonify({
             "jobs": jobs,
-            "total": count_jobs(),
+            # ``total`` is the number of jobs matching the current filters;
+            # ``global_total`` is the unfiltered count across all sources.
+            "total": count_jobs(**filters),
+            "global_total": count_jobs(),
             "counts": risk_counts(),
         })
-    except Exception as exc:
+    except Exception:
+        # Log the full detail server-side; never echo internals (paths/SQL)
+        # back to the client.
         logger.exception("Failed to list jobs")
-        return jsonify({"error": f"Could not list jobs: {exc}"}), 500
+        return jsonify({"error": "Could not list jobs."}), 500
 
 
 @app.route("/api/jobs/<int:job_id>", methods=["GET"])
+@limiter.limit(lambda: config.RATE_LIMIT_READ)
 def api_get_job(job_id):
     """Full details of one job, including its stored risk report."""
     try:
         job = get_job(job_id)
-    except Exception as exc:
+    except Exception:
         logger.exception("Failed to fetch job %s", job_id)
-        return jsonify({"error": f"Could not fetch job: {exc}"}), 500
+        return jsonify({"error": "Could not fetch job."}), 500
     if not job:
         return jsonify({"error": "Job not found."}), 404
     return jsonify(job)
 
 
 def _scan_request_authorized():
-    """The scan trigger is private when a token is configured.
+    """The scan trigger is fail-closed by default.
 
     With ``SCAN_API_TOKEN`` set, the request must carry the matching
-    ``X-Scan-Token`` header. When the token is unset the endpoint is open
-    ONLY in the no-token dev/demo mode (``LLM_ENABLED=false``, i.e. no
-    spend / no off-box text path); once ``LLM_ENABLED`` is true the startup
-    guard already requires a token, so this stays fail-closed either way.
+    ``X-Scan-Token`` header. When no token is configured the endpoint rejects
+    every request unless ``SCAN_ALLOW_ANONYMOUS=true`` is explicitly set
+    (local dev/demos only). The LLM startup guard additionally refuses to boot
+    with ``LLM_ENABLED=true`` without a token, so the spend path is never left
+    open by accident.
     """
     token = config.SCAN_API_TOKEN
     if token:
         return request.headers.get("X-Scan-Token", "") == token
-    return not config.LLM_ENABLED
+    return bool(getattr(config, "SCAN_ALLOW_ANONYMOUS", False))
 
 
 @app.route("/api/scan", methods=["POST"])
@@ -521,9 +559,9 @@ def api_trigger_scan():
     """Trigger a scan manually. Body (JSON, optional): {sources: [...], limit: N}.
 
     Requires the `X-Scan-Token` header to match `SCAN_API_TOKEN` (401
-    otherwise), except in the no-token dev/demo mode (`SCAN_API_TOKEN` unset +
-    `LLM_ENABLED=false`) where scans run open so local demos don't need a
-    secret. Sends 429 when the per-IP rate limit is exceeded.
+    otherwise). With no token configured the endpoint is fail-closed (401)
+    unless `SCAN_ALLOW_ANONYMOUS=true` is set explicitly for local demos.
+    Sends 429 when the per-IP rate limit is exceeded.
 
     Runs in a background thread (202) so the web app never blocks.
     Pass ?sync=1 (or {"sync": true}) to wait for completion instead.
@@ -550,9 +588,9 @@ def api_trigger_scan():
     if sync:
         try:
             summary = run_scan(sources=sources, limit_per_source=limit)
-        except Exception as exc:
+        except Exception:
             logger.exception("Scan failed")
-            return jsonify({"error": f"Scan failed: {exc}"}), 500
+            return jsonify({"error": "Scan failed. Please try again later."}), 500
         summary["counts"] = risk_counts()
         return jsonify(summary)
 
@@ -563,34 +601,38 @@ def api_trigger_scan():
 
 
 @app.route("/api/scan/status", methods=["GET"])
+@limiter.limit(lambda: config.RATE_LIMIT_READ)
 def api_scan_status():
     """Current scan state (running/idle) + last recorded run."""
     from services import scheduler
     try:
         return jsonify(scheduler.get_status())
-    except Exception as exc:
+    except Exception:
         logger.exception("Failed to get scan status")
-        return jsonify({"error": f"Could not get scan status: {exc}"}), 500
+        return jsonify({"error": "Could not get scan status."}), 500
 
 
 @app.route("/api/scan/history", methods=["GET"])
+@limiter.limit(lambda: config.RATE_LIMIT_READ)
 def api_scan_history():
     """Recent scan runs, newest first. Public (dashboard rendering only)."""
     from models.job import list_scan_history
     try:
         runs = list_scan_history(limit=request.args.get("limit", 20))
-    except Exception as exc:
+    except Exception:
         logger.exception("Failed to list scan history")
-        return jsonify({"error": f"Could not list scan history: {exc}"}), 500
+        return jsonify({"error": "Could not list scan history."}), 500
     return jsonify({"runs": runs})
 
 
 @app.route("/api/sources", methods=["GET"])
+@limiter.limit(lambda: config.RATE_LIMIT_READ)
 def api_list_sources():
     return jsonify({"sources": list_sources()})
 
 
 @app.route("/api/taxonomy", methods=["GET"])
+@limiter.limit(lambda: config.RATE_LIMIT_READ)
 def api_taxonomy():
     """World industry categories + the job roles under each, for the
     dashboard's "browse by industry, then role" pickers. Public."""
@@ -603,6 +645,7 @@ def api_taxonomy():
 # ---------------------------------------------------------------------------
 
 @app.route("/dashboard", methods=["GET"])
+@limiter.limit(lambda: config.RATE_LIMIT_READ)
 def dashboard():
     """Dashboard home: jobs grouped by risk level + scan controls."""
     from models.job import get_last_scan
@@ -619,13 +662,15 @@ def dashboard():
 
 
 @app.route("/dashboard/jobs/<int:job_id>", methods=["GET"])
+@limiter.limit(lambda: config.RATE_LIMIT_READ)
 def dashboard_job_detail(job_id):
     """Full stored risk report for one scanned job."""
     try:
         job = get_job(job_id)
-    except Exception as exc:
+    except Exception:
         logger.exception("Dashboard: failed to fetch job %s", job_id)
-        return render_template("job_detail.html", job=None, error=str(exc)), 500
+        return render_template("job_detail.html", job=None,
+                               error="Could not load this job report."), 500
     if not job:
         return render_template("job_detail.html", job=None, error="Job not found."), 404
     job.setdefault("risk_categories", [])

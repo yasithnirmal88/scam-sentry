@@ -163,14 +163,11 @@ class _BaseBackend:
         rows = self._fetch_all(self._list_sql(where), params)
         return [row_to_job(r) for r in rows]
 
-    def count_jobs(self, risk_level: Optional[str]) -> int:
-        rl = normalize_risk_level(risk_level)
-        if rl:
-            row = self._fetch_one(
-                "SELECT COUNT(*) AS n FROM jobs WHERE overall_risk_level = "
-                + self._p("rl"), {"rl": rl})
-        else:
-            row = self._fetch_one("SELECT COUNT(*) AS n FROM jobs")
+    def count_jobs(self, risk_level: Optional[str] = None, source: Optional[str] = None,
+                   query: Optional[str] = None, industry: Optional[str] = None,
+                   role: Optional[str] = None) -> int:
+        where, params = self._filters(risk_level, source, query, industry, role)
+        row = self._fetch_one(f"SELECT COUNT(*) AS n FROM jobs {where}", params)
         return int(row["n"]) if row else 0
 
     def risk_counts(self) -> dict[str, int]:

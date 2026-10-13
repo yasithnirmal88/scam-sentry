@@ -46,6 +46,40 @@ def test_list_filter_and_detail(api_client):
     assert api_client.get("/api/jobs/9999").status_code == 404
 
 
+def test_list_jobs_total_is_filtered_and_global_total_is_not(api_client):
+    save_job(JobRecord(
+        title="Alpha", company="Acme", url="https://example.com/alpha",
+        source="remoteok", overall_risk_level="High",
+        industry="Technology & IT", job_role="Software Engineer"))
+    save_job(JobRecord(
+        title="Beta", company="Globex", url="https://example.com/beta",
+        source="remotive", overall_risk_level="Low",
+        industry="Finance", job_role="Data Analyst"))
+
+    body = api_client.get("/api/jobs").get_json()
+    assert body["total"] == 2 and body["global_total"] == 2
+
+    high = api_client.get("/api/jobs?risk_level=High").get_json()
+    assert high["total"] == 1 and len(high["jobs"]) == 1
+    assert high["global_total"] == 2
+
+    src = api_client.get("/api/jobs?source=remotive").get_json()
+    assert src["total"] == 1 and src["jobs"][0]["title"] == "Beta"
+
+    search = api_client.get("/api/jobs?q=Acme").get_json()
+    assert search["total"] == 1 and search["jobs"][0]["title"] == "Alpha"
+
+    industry = api_client.get("/api/jobs?industry=Finance").get_json()
+    assert industry["total"] == 1 and industry["jobs"][0]["title"] == "Beta"
+
+    role = api_client.get("/api/jobs?role=Software%20Engineer").get_json()
+    assert role["total"] == 1 and role["jobs"][0]["title"] == "Alpha"
+
+    empty = api_client.get("/api/jobs?risk_level=Critical").get_json()
+    assert empty["total"] == 0 and empty["jobs"] == []
+    assert empty["global_total"] == 2
+
+
 def test_trigger_scan_stores_with_risk(api_client, monkeypatch):
     import services.scanner_service as svc
 
@@ -153,3 +187,78 @@ def test_taxonomy_endpoint(api_client):
     assert "Software Engineer" in industries["Technology & IT"]
     assert "Healthcare" in industries
     assert len(industries) >= 15
+
+
+# --- internal errors must never be reflected to clients (F-02) -------------
+# Each handler logs the real exception server-side and returns a fixed,
+# generic message; the marker string below must never appear in the response.
+
+_LEAK_MARKER = "INTERNAL-LEAK-/var/secret/scam_sentry.db-SELECT-x"
+
+
+def _boom(*args, **kwargs):
+    raise RuntimeError(_LEAK_MARKER)
+
+
+def _assert_not_leaked(res, expected_status, expected_fragment):
+    body = res.get_data(as_text=True)
+    assert _LEAK_MARKER not in body
+    assert res.status_code == expected_status
+    assert expected_fragment in res.get_json()["error"]
+
+
+def test_list_jobs_failure_hides_internal_detail(api_client, monkeypatch):
+    import app as app_module
+    monkeypatch.setattr(app_module, "list_jobs", _boom)
+    res = api_client.get("/api/jobs")
+    _assert_not_leaked(res, 500, "Could not list jobs")
+
+
+def test_get_job_failure_hides_internal_detail(api_client, monkeypatch):
+    import app as app_module
+    monkeypatch.setattr(app_module, "get_job", _boom)
+    res = api_client.get("/api/jobs/1")
+    _assert_not_leaked(res, 500, "Could not fetch job")
+
+
+def test_scan_status_failure_hides_internal_detail(api_client, monkeypatch):
+    import services.scheduler as sched
+    monkeypatch.setattr(sched, "get_status", _boom)
+    res = api_client.get("/api/scan/status")
+    _assert_not_leaked(res, 500, "Could not get scan status")
+
+
+def test_scan_history_failure_hides_internal_detail(api_client, monkeypatch):
+    import models.job as job_module
+    monkeypatch.setattr(job_module, "list_scan_history", _boom)
+    res = api_client.get("/api/scan/history")
+    _assert_not_leaked(res, 500, "Could not list scan history")
+
+
+def test_sync_scan_failure_hides_internal_detail(api_client, monkeypatch):
+    import services.scanner_service as svc
+    monkeypatch.setattr(svc, "run_scan", _boom)
+    res = api_client.post("/api/scan?sync=1", json={"sources": ["remoteok"]},
+                          headers={"X-Scan-Token": "test-token"})
+    _assert_not_leaked(res, 500, "Scan failed")
+
+
+def test_job_detail_page_failure_hides_internal_detail(api_client, monkeypatch):
+    import app as app_module
+    monkeypatch.setattr(app_module, "get_job", _boom)
+    res = api_client.get("/dashboard/jobs/1")
+    body = res.get_data(as_text=True)
+    assert _LEAK_MARKER not in body
+    assert res.status_code == 500
+    assert "Could not load this job report." in body
+
+
+def test_validation_errors_stay_user_facing(api_client):
+    """Intentional, user-facing validation errors are preserved verbatim."""
+    short = api_client.post("/api/analyze/text", json={"text": ""})
+    assert short.status_code == 400
+    assert "Not enough text" in short.get_json()["error"]
+
+    no_file = api_client.post("/api/analyze/file")
+    assert no_file.status_code == 400
+    assert "No file was uploaded" in no_file.get_json()["error"]
