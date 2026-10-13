@@ -64,7 +64,9 @@ def test_safe_defaults():
     assert config.SCAN_ENABLED is False
     assert config.FLASK_DEBUG is False
     assert config.SCAN_API_TOKEN == ""
+    assert config.SCAN_ALLOW_ANONYMOUS is False
     assert config.RATE_LIMIT_ANALYZE and config.RATE_LIMIT_SCAN
+    assert config.RATE_LIMIT_READ
 
 
 def test_deploy_files_exist():
@@ -73,11 +75,16 @@ def test_deploy_files_exist():
     dockerfile = os.path.join(root, "Dockerfile")
     assert os.path.exists(env_example)
     env_content = open(env_example).read()
-    for key in ("SCAN_ENABLED", "SCAN_API_TOKEN", "RATE_LIMIT_ANALYZE", "RATE_LIMIT_SCAN"):
+    for key in ("SCAN_ENABLED", "SCAN_API_TOKEN", "SCAN_ALLOW_ANONYMOUS",
+                "RATE_LIMIT_ANALYZE", "RATE_LIMIT_SCAN", "RATE_LIMIT_READ"):
         assert key in env_content, key
     assert os.path.exists(dockerfile)
     content = open(dockerfile).read()
     assert "gunicorn" in content and "app:app" in content
+    # Hardening: pinned base, non-root runtime user, healthcheck on /api/health.
+    assert "python:3.12-slim-bookworm" in content
+    assert "USER appuser" in content
+    assert "HEALTHCHECK" in content and "/api/health" in content
     reqs = open(os.path.join(root, "requirements.txt")).read()
     assert "gunicorn" in reqs
     assert "Flask-Limiter" in reqs
