@@ -45,6 +45,26 @@ def test_save_get_list_filter(db):
     assert count_jobs(db_path=db) == 1
 
 
+def test_count_jobs_respects_filters(db):
+    init_db(db)
+    save_job(_sample("https://example.com/1"), db)
+    rec = _sample("https://example.com/2")
+    rec.overall_risk_level = "High"
+    rec.source = "remotive"
+    rec.industry = "Finance"
+    rec.job_role = "Data Analyst"
+    save_job(rec, db)
+
+    assert count_jobs(db_path=db) == 2
+    assert count_jobs(risk_level="High", db_path=db) == 1
+    assert count_jobs(source="remotive", db_path=db) == 1
+    assert count_jobs(industry="Finance", db_path=db) == 1
+    assert count_jobs(role="Data Analyst", db_path=db) == 1
+    assert count_jobs(query="Support", db_path=db) == 2
+    assert count_jobs(query="no-such-text", db_path=db) == 0
+    assert count_jobs(risk_level="Critical", db_path=db) == 0
+
+
 def test_upsert_same_url(db):
     init_db(db)
     a = save_job(_sample(), db)

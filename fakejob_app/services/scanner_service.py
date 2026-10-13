@@ -5,7 +5,7 @@ Orchestrates: fetch from sources -> evaluate with Risk Engine -> store.
 
 - One failing source never stops the whole scan (per-source isolation).
 - Dedupes by normalized URL within a run and via UNIQUE(url) upserts.
-- Records every run in scan_history with a success/partial/failed status.
+- Records every run in scan_history with a success/partial/empty/failed status.
 """
 
 from __future__ import annotations
@@ -24,12 +24,21 @@ logger = logging.getLogger("scam_sentry.scanner_service")
 
 
 def _final_status(summary: dict[str, Any]) -> str:
+    """Classify a finished run for the dashboard.
+
+    - ``success`` : something was stored and no source errored.
+    - ``partial`` : something was stored but at least one source errored.
+    - ``failed``  : nothing was stored and at least one source errored (no
+      usable source worked).
+    - ``empty``   : the run completed cleanly but nothing was worth storing
+      (every source returned nothing, or everything was skipped/duplicate).
+      Deliberately distinct from ``success`` (nothing was stored) and from
+      ``failed`` (nothing actually went wrong).
+    """
     errors = summary.get("errors") or {}
-    if summary.get("stored", 0) > 0:
+    if (summary.get("stored", 0) or 0) > 0:
         return "partial" if errors else "success"
-    if summary.get("fetched", 0) > 0:
-        return "partial"
-    return "failed" if errors else "success"
+    return "failed" if errors else "empty"
 
 
 def run_scan(sources: Optional[list[str]] = None, limit_per_source: int | None = None,
@@ -42,7 +51,8 @@ def run_scan(sources: Optional[list[str]] = None, limit_per_source: int | None =
     summary: dict[str, Any] = {
         "started_at": utcnow_iso(), "finished_at": "",
         "sources": {}, "fetched": 0, "evaluated": 0, "stored": 0,
-        "skipped": 0, "duplicates": 0, "errors": {}, "status": "unknown",
+        "skipped": 0, "duplicates": 0, "errors": {}, "empty_sources": [],
+        "status": "unknown",
     }
     seen_urls: set[str] = set()
     logger.info("Scan starting: sources=%s limit_per_source=%d", wanted, per_source)
@@ -59,8 +69,8 @@ def run_scan(sources: Optional[list[str]] = None, limit_per_source: int | None =
         summary["sources"][name] = len(jobs)
         summary["fetched"] += len(jobs)
         logger.info("Source %s: %d jobs in %.1fs", name, len(jobs), elapsed)
-        if not jobs and name not in summary["errors"]:
-            summary["errors"][name] = "no jobs returned"
+        if not jobs:
+            summary["empty_sources"].append(name)
 
         for job in jobs:
             url = normalize_url(job.url)

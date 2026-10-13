@@ -119,9 +119,13 @@ def list_jobs(risk_level: Optional[str] = None, source: Optional[str] = None,
             risk_level, source, query, limit, offset, industry, role)
 
 
-def count_jobs(risk_level: Optional[str] = None, db_path: Optional[str] = None) -> int:
+def count_jobs(risk_level: Optional[str] = None, source: Optional[str] = None,
+               query: Optional[str] = None, industry: Optional[str] = None,
+               role: Optional[str] = None, db_path: Optional[str] = None) -> int:
+    """Count stored jobs matching the given filters (all optional)."""
     with _lock:
-        return select_backend(db_path).count_jobs(risk_level)
+        return select_backend(db_path).count_jobs(
+            risk_level, source, query, industry, role)
 
 
 def risk_counts(db_path: Optional[str] = None) -> dict[str, int]:

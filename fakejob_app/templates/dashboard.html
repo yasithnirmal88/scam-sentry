@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=6">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=9">
 </head>
 <body>
 
@@ -56,7 +56,7 @@
     <div class="metrics-grid dash-status" aria-live="polite">
       <div class="metric-card"><div class="metric-label">Total Jobs Stored</div><div class="metric-val" id="total-jobs">{{ total }}</div><div class="metric-meta">across all sources</div></div>
       <div class="metric-card"><div class="metric-label">Last Scan</div><div class="metric-val truncate" id="last-scan-time">{{ (last_scan.finished_at[:16] if last_scan and last_scan.finished_at else "Never") | replace("T", " ") }}</div><div class="metric-meta" id="last-scan-detail">{% if last_scan %}{{ last_scan.stored }} stored &bull; {{ last_scan.fetched }} fetched{% else %}no scan recorded yet{% endif %}</div></div>
-      <div class="metric-card"><div class="metric-label">Last Scan Status</div><div class="metric-val" id="last-scan-status">{% if last_scan %}{{ last_scan.status }}{% else %}—{% endif %}</div><div class="metric-meta">success / partial / failed</div></div>
+      <div class="metric-card"><div class="metric-label">Last Scan Status</div><div class="metric-val" id="last-scan-status">{% if last_scan %}{{ last_scan.status }}{% else %}—{% endif %}</div><div class="metric-meta">success / partial / empty / failed</div></div>
     </div>
 
     <!-- First-run welcome (shown only when the database is empty) -->
@@ -109,6 +109,7 @@
           </select>
           <input id="filter-q" class="dash-search" type="search" placeholder="Search title or company…" aria-label="Search jobs">
         </div>
+        <div class="dash-filter-summary" id="filter-summary" aria-live="polite"></div>
       </div>
       <div class="dash-scan">
         <div class="dash-scan-sources" id="scan-sources">
@@ -162,6 +163,6 @@
     </div>
   </footer>
 
-  <script src="{{ url_for('static', filename='dashboard.js') }}?v=7"></script>
+  <script src="{{ url_for('static', filename='dashboard.js') }}?v=9"></script>
 </body>
 </html>

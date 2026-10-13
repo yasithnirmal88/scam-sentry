@@ -66,7 +66,9 @@ def main(argv: list[str] | None = None) -> int:
         summary.get("stored"), summary.get("skipped"), summary.get("duplicates")))
     if summary.get("errors"):
         print("errors: %s" % summary["errors"])
-    return 0 if summary.get("status") in ("success", "partial") else 1
+    # "empty" means the scan completed cleanly but found nothing to store, so it
+    # is not treated as a failure for exit-code purposes.
+    return 0 if summary.get("status") in ("success", "partial", "empty") else 1
 
 
 if __name__ == "__main__":
