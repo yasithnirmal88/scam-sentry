@@ -143,6 +143,11 @@ export LLM_MODEL=gpt-4o-mini
   auto-classified into industry + role (deterministic keyword rules in
   `taxonomy.py`; display/filter aid only, never part of the risk verdict), and
   the detail page shows both chips. Filter by industry, then narrow to a role.
+- **Search by Country / Region**: a dashboard row filters listings by country
+  (plus a remote / on-site toggle). Each listing's free-text `location` is
+  normalized on save (best-effort, rules in `location.py`; display/filter aid
+  only, never part of the risk verdict) into a country + region. Filters are
+  applied server-side via `/api/jobs?country=&region=&remote=`.
 - One-click scans from the UI, background scheduler, `scan.py` CLI
 - Optional LLM enhancement layer (OpenAI-compatible; off by default)
 - 230+ automated tests (`pytest`)
@@ -341,7 +346,7 @@ board that fails is skipped and logged without aborting the scan.
 |---|---|---|
 | `/api/analyze/text` | POST `{"text": "..."}` | Single-job risk report |
 | `/api/analyze/file` | POST multipart `file` | Single-job risk report (OCR) |
-| `/api/jobs?risk_level=&source=&industry=&role=&q=&limit=&offset=` | GET | Scanned jobs + per-level counts (`industry`/`role` filter by the auto-classified taxonomy fields). `total` is the count matching the current filters; `global_total` is the unfiltered count across all sources |
+| `/api/jobs?risk_level=&source=&industry=&role=&country=&region=&remote=&q=&limit=&offset=` | GET | Scanned jobs + per-level counts (`industry`/`role` filter by the auto-classified taxonomy fields; `country`/`region` match the normalized location — country aliases like `USA`/`UK` resolve to their canonical name; `remote=true|false` toggles remote/worldwide vs on-site). The response also carries `countries` and `regions` picker options (global, unaffected by the current filters). `total` is the count matching the current filters; `global_total` is the unfiltered count across all sources |
 | `/api/jobs/<id>` | GET | One stored job with full risk report |
 | `/api/scan` | POST `{"sources": [...], "limit": N}` + `X-Scan-Token` header | Async scan → `202`; `?sync=1` to wait. `401` without a valid `SCAN_API_TOKEN`, `429` when over the rate limit |
 | `/api/scan/status` | GET | Running/idle + last recorded run |

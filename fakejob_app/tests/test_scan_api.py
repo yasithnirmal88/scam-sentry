@@ -146,6 +146,91 @@ def test_scan_classifies_industry_and_role(api_client, monkeypatch):
     assert jobs[0]["job_role"] == "Software Engineer"
 
 
+def test_list_jobs_country_region_filters(api_client):
+    germany = save_job(JobRecord(
+        title="Backend Engineer", company="Berlin Co", location="Berlin, Germany",
+        url="https://example.com/de", source="remoteok",
+        overall_risk_level="Low", industry="Technology & IT",
+        job_role="Software Engineer"))
+    usa = save_job(JobRecord(
+        title="Data Analyst", company="NY Co", location="New York, USA",
+        url="https://example.com/us", source="remoteok",
+        overall_risk_level="Low", industry="Finance", job_role="Data Analyst"))
+    assert germany > 0 and usa > 0
+
+    body = api_client.get("/api/jobs", query_string={"country": "Germany"}).get_json()
+    assert body["total"] == 1 and body["global_total"] == 2
+    assert [j["id"] for j in body["jobs"]] == [germany]
+
+    # US abbreviation resolves to the canonical country.
+    body = api_client.get("/api/jobs", query_string={"country": "USA"}).get_json()
+    assert [j["id"] for j in body["jobs"]] == [usa]
+
+    # region filter matches every country in that region.
+    body = api_client.get("/api/jobs", query_string={"region": "Europe"}).get_json()
+    assert [j["id"] for j in body["jobs"]] == [germany]
+
+    # compatible with existing filters.
+    body = api_client.get("/api/jobs", query_string={
+        "country": "Germany", "industry": "Technology & IT"}).get_json()
+    assert [j["id"] for j in body["jobs"]] == [germany]
+    body = api_client.get("/api/jobs", query_string={
+        "country": "Germany", "industry": "Finance"}).get_json()
+    assert body["jobs"] == []
+
+
+def test_list_jobs_remote_filter(api_client):
+    remote_id = _seed()  # location "Remote"
+    onsite = save_job(JobRecord(
+        title="Clinic Nurse", company="Clinic", location="Berlin, Germany",
+        url="https://example.com/onsite", source="remoteok",
+        overall_risk_level="Low"))
+    assert remote_id > 0 and onsite > 0
+
+    body = api_client.get("/api/jobs", query_string={"remote": "true"}).get_json()
+    assert [j["id"] for j in body["jobs"]] == [remote_id]
+    body = api_client.get("/api/jobs", query_string={"remote": "false"}).get_json()
+    assert [j["id"] for j in body["jobs"]] == [onsite]
+    # An unrecognized value is ignored (no filter applied).
+    body = api_client.get("/api/jobs", query_string={"remote": "maybe"}).get_json()
+    assert body["total"] == 2
+
+
+def test_list_jobs_returns_location_options(api_client):
+    _seed()  # Remote
+    save_job(JobRecord(
+        title="Analyst", company="C", location="Colombo, Sri Lanka",
+        url="https://example.com/lk", source="remoteok", overall_risk_level="Low"))
+    body = api_client.get("/api/jobs").get_json()
+    assert "Sri Lanka" in body["countries"]
+    assert "Remote" in body["countries"]
+    assert "Asia" in body["regions"]
+
+
+def test_scan_populates_country_and_region(api_client, monkeypatch):
+    import services.scanner_service as svc
+
+    fake_jobs = [NormalizedJob(
+        title="Senior Software Engineer", company="Acme", location="Berlin, Germany",
+        description="Build and maintain web applications using Python and APIs.",
+        url="https://example.com/swe-de", source="remoteok", posted_at="2026-01-01")]
+
+    class FakeScanner:
+        name = "remoteok"
+
+        def safe_fetch(self, limit=20):
+            return fake_jobs
+
+    monkeypatch.setattr(svc, "get_scanner", lambda name, **k: FakeScanner())
+    res = api_client.post("/api/scan?sync=1",
+                          json={"sources": ["remoteok"], "limit": 5},
+                          headers={"X-Scan-Token": "test-token"})
+    assert res.status_code == 200
+    jobs = api_client.get("/api/jobs").get_json()["jobs"]
+    assert jobs[0]["country"] == "Germany"
+    assert jobs[0]["region"] == "Europe"
+
+
 def test_list_jobs_industry_role_filters(api_client):
     tech = _seed()
     health = save_job(JobRecord(

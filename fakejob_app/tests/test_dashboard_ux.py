@@ -137,6 +137,27 @@ def test_dashboard_pages_carry_phase5_markup(history_client):
     assert 'id="ml-note-text"' in home
 
 
+def test_dashboard_has_country_region_controls(history_client):
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    html = (root / "templates" / "dashboard.html").read_text(encoding="utf-8")
+    js = (root / "static" / "dashboard.js").read_text(encoding="utf-8")
+    assert "Search by Country / Region" in html
+    assert 'id="filter-country"' in html
+    assert 'id="filter-region"' in html
+    assert 'id="filter-remote"' in html
+    # Filtering happens server-side via the query string.
+    assert 'params.set("country"' in js
+    assert 'params.set("region"' in js
+    assert 'params.set("remote"' in js
+    assert "populateLocationOptions" in js
+    # And the rendered page carries the controls.
+    dash = history_client.get("/dashboard").get_data(as_text=True)
+    assert 'id="filter-country"' in dash
+    assert 'id="filter-region"' in dash
+    assert 'id="filter-remote"' in dash
+
+
 def test_dashboard_scan_flow_needs_no_token_when_anonymous_enabled(
         history_client, monkeypatch):
     """Local dev/demo: with SCAN_ALLOW_ANONYMOUS=true and no token, the
