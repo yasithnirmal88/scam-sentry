@@ -401,12 +401,8 @@ async function startScan(sources) {
       return;
     }
     if (res.status === 401) {
-      // Fail-closed scan hardening (F-01): the dashboard never sends a token.
-      // Surface the server's setup hint so local/demo users know the two ways
-      // to enable scanning without weakening the default.
-      const hint = data.hint || data.error || "This server requires scan authentication.";
-      scanStatus.textContent = "Scan blocked — authentication required.";
-      throw new Error(hint);
+      scanStatus.textContent = "Unauthorized — this server requires a scan token (SCAN_API_TOKEN).";
+      throw new Error(data.error || "Scan failed: token required.");
     }
     if (!res.ok && res.status !== 202) throw new Error(data.error || data.reason || "Scan failed");
     if (res.status === 202 || data.status === "running") {
@@ -466,3 +462,111 @@ loadJobs();
 loadHistory();
 refreshScanStatus();
 loadTaxonomy();
+
+// ------------------------------------------------------------------
+// Cyber Security Constellation & Neural Mesh Canvas Animation
+// ------------------------------------------------------------------
+(function initCyberBackground() {
+  const canvas = document.getElementById("bg-canvas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+
+  let width = (canvas.width = window.innerWidth);
+  let height = (canvas.height = window.innerHeight);
+
+  window.addEventListener("resize", () => {
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+  });
+
+  const mouse = { x: null, y: null, maxDist: 140 };
+  window.addEventListener("mousemove", e => {
+    mouse.x = e.clientX;
+    mouse.y = e.clientY;
+  });
+  window.addEventListener("mouseleave", () => {
+    mouse.x = null;
+    mouse.y = null;
+  });
+
+  const PARTICLE_COUNT = Math.min(80, Math.floor((width * height) / 16000));
+  const particles = [];
+
+  class Particle {
+    constructor() {
+      this.reset();
+    }
+    reset() {
+      this.x = Math.random() * width;
+      this.y = Math.random() * height;
+      this.vx = (Math.random() - 0.5) * 0.55;
+      this.vy = (Math.random() - 0.5) * 0.55;
+      this.radius = Math.random() * 1.8 + 0.8;
+      this.baseAlpha = Math.random() * 0.4 + 0.2;
+    }
+    update() {
+      this.x += this.vx;
+      this.y += this.vy;
+      if (this.x < 0 || this.x > width) this.vx *= -1;
+      if (this.y < 0 || this.y > height) this.vy *= -1;
+    }
+    draw() {
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(0, 240, 255, ${this.baseAlpha})`;
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = "#00f0ff";
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+  }
+
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    particles.push(new Particle());
+  }
+
+  function animate() {
+    ctx.clearRect(0, 0, width, height);
+
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+      p.update();
+      p.draw();
+
+      for (let j = i + 1; j < particles.length; j++) {
+        const p2 = particles[j];
+        const dx = p.x - p2.x;
+        const dy = p.y - p2.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 110) {
+          const alpha = (1 - dist / 110) * 0.22;
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y);
+          ctx.lineTo(p2.x, p2.y);
+          ctx.strokeStyle = `rgba(0, 240, 255, ${alpha})`;
+          ctx.lineWidth = 0.8;
+          ctx.stroke();
+        }
+      }
+
+      if (mouse.x !== null) {
+        const mdx = p.x - mouse.x;
+        const mdy = p.y - mouse.y;
+        const mdist = Math.sqrt(mdx * mdx + mdy * mdy);
+        if (mdist < mouse.maxDist) {
+          const malpha = (1 - mdist / mouse.maxDist) * 0.4;
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y);
+          ctx.lineTo(mouse.x, mouse.y);
+          ctx.strokeStyle = `rgba(99, 102, 241, ${malpha})`;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+      }
+    }
+
+    requestAnimationFrame(animate);
+  }
+
+  animate();
+})();
