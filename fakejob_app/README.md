@@ -184,6 +184,35 @@ To retrain explicitly (and see hold-out metrics), run
 `python model_training.py`; add `--real fake_job_postings.csv` to train on the
 EMSCAD/Kaggle dataset if you have it. See **ML honesty** below.
 
+### Local dashboard scanning
+
+`POST /api/scan` is fail-closed and the dashboard sends **no** token, so a fresh
+clone cannot trigger a scan until you opt in. The easiest local/demo path is to
+copy the sample env file and restart the app (it auto-loads `.env` on start):
+
+```bash
+cp .env.example .env            # Windows: copy .env.example .env
+```
+
+`.env.example` ships the local/demo setup — `SCAN_ALLOW_ANONYMOUS=true` with an
+empty `SCAN_API_TOKEN` — so the dashboard **Run Scan** button works. A local
+`.env` only supplies values that are *not already set* in your environment
+(exported variables always win); set `SCAM_SENTRY_NO_DOTENV=true` to ignore
+`.env` entirely.
+
+For programmatic use, set `SCAN_API_TOKEN=<long random>` instead and send it in
+the `X-Scan-Token` header:
+
+```bash
+curl -X POST http://localhost:5000/api/scan \
+  -H "Content-Type: application/json" \
+  -H "X-Scan-Token: $SCAN_API_TOKEN" \
+  -d '{"sources": ["remotive"], "limit": 10}'
+```
+
+A configured token always wins over `SCAN_ALLOW_ANONYMOUS`, so the dashboard
+(token-free) trigger stays rejected while the API works.
+
 ### Production (gunicorn)
 
 ```bash
@@ -302,7 +331,9 @@ board that fails is skipped and logged without aborting the scan.
 
 ## Environment variables
 
-See `.env.example`. Highlights:
+See `.env.example`. The app auto-loads a local `.env` (via python-dotenv) at
+startup; exported environment variables always take precedence, and
+`SCAM_SENTRY_NO_DOTENV=true` disables the file entirely. Highlights:
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -310,6 +341,7 @@ See `.env.example`. Highlights:
 | `FLASK_DEBUG` | `false` | Never enable in production |
 | `LOG_LEVEL` | `INFO` | Python log level |
 | `SCAM_SENTRY_DB` | `scam_sentry.db` | SQLite file |
+| `SCAM_SENTRY_NO_DOTENV` | `false` | When `true`/`1`, ignore a local `.env` and read only real environment variables |
 | `DATABASE_URL` | *(empty)* | Postgres connection string. When set, it takes precedence over the SQLite file (Render/Neon/Supabase). Leave empty for local SQLite |
 | `SCAN_API_TOKEN` | *(empty)* | Shared secret required by `POST /api/scan` (sent in the `X-Scan-Token` header). Empty = fail-closed: the endpoint rejects every request unless `SCAN_ALLOW_ANONYMOUS=true` |
 | `SCAN_ALLOW_ANONYMOUS` | `false` | Dev/demo only: allow unauthenticated scans when `SCAN_API_TOKEN` is empty. Ignored when a token is set; never enable on a public deployment |
