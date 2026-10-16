@@ -8,10 +8,22 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     SCAM_SENTRY_DB=/data/scam_sentry.db
 
-# OCR + PDF system dependencies.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    tesseract-ocr poppler-utils \
- && rm -rf /var/lib/apt/lists/*
+# OCR system dependencies. These are OS packages, not pip packages, so they are
+# installed here and verified at build time: tesseract-ocr = image/scanned text;
+# poppler-utils = pdf2image's pdftoppm renderer; the jpeg/zlib libs are the
+# codecs Pillow uses (the manylinux wheels bundle them, but declaring them keeps
+# source builds working). The `&& ... --version` checks fail the build early if
+# a binary is ever missing instead of shipping a broken OCR image.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      tesseract-ocr \
+      tesseract-ocr-eng \
+      poppler-utils \
+      libjpeg62-turbo \
+      zlib1g \
+ && rm -rf /var/lib/apt/lists/* \
+ && tesseract --version \
+ && pdftoppm -v
 
 # Dedicated non-root user. /app holds the code; /data is the writable spot for
 # the SQLite DB (mount a volume there to persist it, or set DATABASE_URL).
