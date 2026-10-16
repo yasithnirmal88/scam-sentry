@@ -51,6 +51,7 @@ import config
 import fraud_features
 from fraud_features import extract_all_features, FEATURE_KEYS
 from text_processing import preprocess
+import ocr_utils
 from ocr_utils import extract_text
 from model_training import build_synthetic_dataset, load_model_metadata, train
 from risk.indicators import analyze_indicators
@@ -465,6 +466,13 @@ def health():
         "status": "ok",
         "model_loaded": _clf is not None,
         "model": _health_model_info(),
+        # Diagnostic only: image/scanned-PDF extraction needs the Tesseract and
+        # Poppler system binaries, which pip does not provide. Lets a deployer
+        # confirm OCR availability without uploading a file.
+        "ocr": {
+            "tesseract": ocr_utils.tesseract_available(),
+            "pdf_render": ocr_utils.PDF2IMAGE_AVAILABLE,
+        },
     })
 
 
