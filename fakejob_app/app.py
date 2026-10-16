@@ -567,8 +567,18 @@ def api_trigger_scan():
     Pass ?sync=1 (or {"sync": true}) to wait for completion instead.
     """
     if not _scan_request_authorized():
-        return jsonify({"error": "Unauthorized: provide the correct "
-                                  "X-Scan-Token header."}), 401
+        if config.SCAN_API_TOKEN:
+            error = "Scan authentication is enabled: send a valid X-Scan-Token header."
+            hint = ("This server sets SCAN_API_TOKEN, so the dashboard's token-free "
+                    "trigger is rejected. Call POST /api/scan with the X-Scan-Token "
+                    "header, or (local/demo only) unset SCAN_API_TOKEN and set "
+                    "SCAN_ALLOW_ANONYMOUS=true.")
+        else:
+            error = "Scan authentication is enabled: the scan trigger is fail-closed."
+            hint = ("Set SCAN_ALLOW_ANONYMOUS=true in .env for local/demo scans, or "
+                    "configure SCAN_API_TOKEN and call POST /api/scan with the "
+                    "X-Scan-Token header for programmatic access.")
+        return jsonify({"error": error, "hint": hint}), 401
 
     from services import scheduler
     from services.scanner_service import run_scan
