@@ -5,15 +5,4 @@ __pycache__/
 .DS_Store
 Thumbs.db
 *.db
-scan.log
-
-# Local env
-.env
-
-# Coverage
-.coverage
-htmlcov/
-
-# Real dataset (EMSCAD/Kaggle CSV) - download separately, never commit
-fakejob_app/data/
 
