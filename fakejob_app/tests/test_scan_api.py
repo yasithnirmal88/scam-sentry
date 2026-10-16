@@ -46,6 +46,13 @@ def test_list_filter_and_detail(api_client):
     assert api_client.get("/api/jobs/9999").status_code == 404
 
 
+def test_list_jobs_exposes_source_url_for_linking(api_client):
+    _seed()
+    job = api_client.get("/api/jobs").get_json()["jobs"][0]
+    assert job["url"] == "https://example.com/qa"
+    assert job["source"] == "remoteok"
+
+
 def test_list_jobs_total_is_filtered_and_global_total_is_not(api_client):
     save_job(JobRecord(
         title="Alpha", company="Acme", url="https://example.com/alpha",

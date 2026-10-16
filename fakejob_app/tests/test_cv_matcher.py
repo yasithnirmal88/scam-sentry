@@ -58,12 +58,19 @@ def test_expected_result_shape():
     ranked = cv_matcher.match_jobs(CV, [_job(1, "Python Developer", "Python")])
     result = ranked[0]
     assert set(result) >= {
-        "job_id", "title", "company", "location", "source", "industry",
+        "job_id", "title", "company", "location", "source", "url", "industry",
         "job_role", "country", "region", "risk_level", "fit_score",
         "matched_terms", "reason",
     }
     assert isinstance(result["fit_score"], int)
     assert "_rank" not in result
+
+
+def test_match_result_carries_original_url():
+    ranked = cv_matcher.match_jobs(
+        CV, [_job(1, "Python Developer", "Python",
+                  url="https://example.com/jobs/1")])
+    assert ranked[0]["url"] == "https://example.com/jobs/1"
 
 
 def test_critical_jobs_are_not_top_even_with_equal_fit():

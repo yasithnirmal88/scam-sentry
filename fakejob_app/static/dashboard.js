@@ -101,13 +101,29 @@ function pillClass(level) {
 }
 
 function jobCard(job) {
-  const el = document.createElement("a");
+  const el = document.createElement("div");
   el.className = "job-card";
-  el.href = `/dashboard/jobs/${job.id}`;
+  const detailUrl = `/dashboard/jobs/${job.id}`;
+  el.tabIndex = 0;
+  el.setAttribute("role", "link");
+  el.setAttribute("aria-label", `Open risk report for ${job.title || "this job"}`);
+  el.addEventListener("click", (e) => {
+    if (e.target.closest("a")) return;
+    window.location.href = detailUrl;
+  });
+  el.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      window.location.href = detailUrl;
+    }
+  });
   const posted = (job.posted_at || "").slice(0, 10);
   const taxonomy = `"${escapeHtml(job.industry || "Other")} \u203a ${escapeHtml(job.job_role || "Other")}"`;
   const taxLine = (job.industry && job.industry !== "Other")
     ? `<div class="job-tax">${taxonomy}</div>` : "";
+  const source = job.url
+    ? `<a class="job-source job-source-link" href="${escapeHtml(job.url)}" target="_blank" rel="noopener noreferrer" title="Open the original posting on ${escapeHtml(job.source || "the source site")}">${escapeHtml(job.source || "source")} &#8599;</a>`
+    : `<span class="job-source">${escapeHtml(job.source || "")}</span>`;
   el.innerHTML = `
     <div class="job-card-top">
       <strong class="job-card-title">${escapeHtml(job.title || "Untitled role")}</strong>
@@ -116,7 +132,7 @@ function jobCard(job) {
     <div class="job-card-meta">${escapeHtml(job.company || "Unknown company")}${job.location ? " &bull; " + escapeHtml(job.location) : ""}</div>
     ${taxLine}
     <div class="job-card-foot">
-      <span class="job-source">${escapeHtml(job.source || "")}</span>
+      ${source}
       <span class="job-date">${escapeHtml(posted || "date unknown")}</span>
     </div>`;
   return el;

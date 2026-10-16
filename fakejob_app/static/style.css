@@ -1357,15 +1357,27 @@ textarea::placeholder {
   display: block;
   text-decoration: none;
   color: inherit;
+  cursor: pointer;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
   padding: 14px;
   transition: transform 0.15s ease, border-color 0.15s ease;
 }
-.job-card:hover {
+.job-card:hover,
+.job-card:focus-visible {
   transform: translateY(-2px);
   border-color: rgba(6, 182, 212, 0.5);
+  outline: none;
+}
+.job-source-link {
+  color: #67e8f9;
+  text-decoration: none;
+  border-bottom: 1px dotted rgba(103, 232, 249, 0.5);
+}
+.job-source-link:hover {
+  color: #a5f3fc;
+  border-bottom-color: #a5f3fc;
 }
 .job-card-top {
   display: flex;

@@ -71,6 +71,20 @@ def test_dashboard_has_cv_matcher_panel(history_client):
     assert b"Match Jobs to Your CV" in page.data
 
 
+def test_dashboard_cards_link_to_original_posting(history_client):
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    js = (root / "static" / "dashboard.js").read_text(encoding="utf-8")
+    # Card source is a real link to the original posting, opening a new tab.
+    assert "job-source-link" in js
+    assert 'target="_blank"' in js
+    assert 'rel="noopener noreferrer"' in js
+    assert "job.url" in js
+    detail = (root / "templates" / "job_detail.html").read_text(encoding="utf-8")
+    assert "View Original Posting" in detail
+    assert 'rel="noopener noreferrer"' in detail
+
+
 def test_api_scan_history(history_client):
     res = history_client.get("/api/scan/history")
     assert res.status_code == 200

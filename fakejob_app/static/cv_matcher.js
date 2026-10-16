@@ -64,6 +64,9 @@
       ? `<div class="cv-matched">Matched: ${escapeHtml(match.matched_terms.join(", "))}</div>`
       : "";
     const place = [match.company, match.location].filter(Boolean).join(" • ");
+    const source = match.url
+      ? `<a class="job-source job-source-link" href="${escapeHtml(match.url)}" target="_blank" rel="noopener noreferrer" title="Open the original posting">${escapeHtml(match.source || "source")} &#8599;</a>`
+      : `<span class="job-source">${escapeHtml(match.source || "")}</span>`;
     card.innerHTML = `
       <div class="job-card-top">
         <strong class="job-card-title">${escapeHtml(match.title || "Untitled role")}</strong>
@@ -77,7 +80,7 @@
       <div class="cv-reason">${escapeHtml(match.reason || "")}</div>
       ${matched}
       <div class="job-card-foot">
-        <span class="job-source">${escapeHtml(match.source || "")}</span>
+        ${source}
         <a class="cv-link" href="/dashboard/jobs/${encodeURIComponent(match.job_id)}">View details &rarr;</a>
       </div>`;
     return card;

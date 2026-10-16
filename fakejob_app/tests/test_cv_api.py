@@ -58,6 +58,7 @@ def test_match_cv_with_pasted_text(cv_client):
     assert top["risk_level"] == "Low"
     assert top["fit_score"] > 0
     assert "python" in top["matched_terms"]
+    assert top["url"] == "https://example.com/good"
 
 
 def test_match_cv_upload_txt_file(cv_client):
