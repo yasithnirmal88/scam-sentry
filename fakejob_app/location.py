@@ -13,6 +13,10 @@ Design rules (mirroring ``taxonomy.py``):
 - Best-effort only: an unrecognized location returns ``("", "")`` rather than a
   guess, so the API filter can fall back to a conservative substring match on
   the raw text (see ``models/storage.py``).
+- A city name (``_CITIES``) resolves to its country so a listing whose location
+  is just "London" or "New York, NY" is still filterable. An explicit country in
+  the same string always wins ("London, Canada" -> Canada). Ambiguous names
+  (e.g. "georgia", "jordan", "san jose") are intentionally omitted.
 - ``REMOTE`` is used as both the country and the region value for
   Remote / Worldwide / Anywhere listings, so it can appear as a filter option.
 - ``EU`` / ``Europe`` are kept as a region-only pseudo entry (country ==
@@ -132,8 +136,110 @@ _COUNTRIES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("New Zealand", "Oceania", ("nz", "nzl", "new zealand")),
 )
 
+# --- city table ------------------------------------------------------------
+# Major job-hub cities -> canonical country, so a listing whose location is
+# just "London" or "New York, NY" still becomes filterable. Curated and
+# deliberately conservative: ambiguous names that double as a country or a
+# common English word (e.g. "georgia", "jordan", "reading", "victoria") are
+# left out, as are cities whose country is genuinely unclear ("San Jose",
+# "Cordoba", "Birmingham"). Single-word cities are only matched as a whole
+# segment, multi-word ones may also match as a phrase inside a longer string.
+_CITIES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("United States",
+     ("new york", "new york city", "nyc", "brooklyn", "manhattan",
+      "san francisco", "sf", "bay area", "silicon valley", "los angeles",
+      "seattle", "austin", "boston", "chicago", "denver", "atlanta", "miami",
+      "dallas", "houston", "philadelphia", "phoenix", "san diego", "san jose",
+      "portland", "minneapolis", "detroit", "washington dc", "washington",
+      "nashville", "salt lake city", "charlotte", "raleigh", "columbus",
+      "indianapolis", "san antonio", "orlando", "tampa", "pittsburgh",
+      "st louis", "saint louis", "kansas city", "las vegas", "sacramento",
+      "boulder", "bellevue", "redmond", "sunnyvale", "mountain view",
+      "palo alto", "cupertino", "santa clara", "irvine", "jersey city",
+      "arlington", "baltimore", "milwaukee", "buffalo")),
+    ("Canada", ("toronto", "vancouver", "montreal", "ottawa", "calgary",
+                "edmonton", "waterloo", "mississauga", "winnipeg", "halifax",
+                "quebec city")),
+    ("United Kingdom",
+     ("london", "manchester", "birmingham", "leeds", "bristol", "edinburgh",
+      "glasgow", "liverpool", "cambridge", "oxford", "cardiff", "belfast",
+      "newcastle", "nottingham", "sheffield", "brighton", "reading")),
+    ("Germany", ("berlin", "munich", "munchen", "hamburg", "frankfurt",
+                 "cologne", "koln", "stuttgart", "dusseldorf", "dresden",
+                 "leipzig", "nuremberg", "nurnberg", "hannover", "karlsruhe",
+                 "darmstadt")),
+    ("France", ("paris", "lyon", "marseille", "toulouse", "bordeaux", "lille",
+                "nantes", "strasbourg")),
+    ("Netherlands", ("amsterdam", "rotterdam", "utrecht", "eindhoven",
+                     "the hague", "den haag")),
+    ("Spain", ("madrid", "barcelona", "valencia", "seville", "sevilla",
+               "malaga", "bilbao")),
+    ("Italy", ("rome", "roma", "milan", "milano", "turin", "torino", "naples",
+               "napoli", "florence", "firenze", "bologna")),
+    ("Ireland", ("dublin", "cork", "galway")),
+    ("Poland", ("warsaw", "warszawa", "krakow", "cracow", "wroclaw", "gdansk",
+                "poznan")),
+    ("Sweden", ("stockholm", "gothenburg", "malmo")),
+    ("Norway", ("oslo", "bergen", "trondheim")),
+    ("Denmark", ("copenhagen", "kobenhavn", "aarhus")),
+    ("Finland", ("helsinki", "espoo", "tampere")),
+    ("Switzerland", ("zurich", "geneva", "basel", "bern", "lausanne")),
+    ("Austria", ("vienna", "wien", "graz")),
+    ("Belgium", ("brussels", "bruxelles", "antwerp", "ghent", "gent")),
+    ("Portugal", ("lisbon", "lisboa", "porto")),
+    ("Czechia", ("prague", "praha", "brno")),
+    ("India", ("bangalore", "bengaluru", "mumbai", "bombay", "delhi",
+               "new delhi", "gurgaon", "gurugram", "noida", "hyderabad",
+               "chennai", "madras", "pune", "kolkata", "calcutta",
+               "ahmedabad", "jaipur", "kochi", "cochin", "coimbatore",
+               "indore", "chandigarh", "trivandrum", "thiruvananthapuram",
+               "mysore", "mysuru")),
+    ("China", ("beijing", "shanghai", "shenzhen", "guangzhou", "hangzhou",
+               "chengdu", "wuhan", "xian", "nanjing", "suzhou")),
+    ("Japan", ("tokyo", "osaka", "kyoto", "yokohama", "nagoya", "fukuoka",
+               "sapporo")),
+    ("South Korea", ("seoul", "busan")),
+    ("Malaysia", ("kuala lumpur", "penang", "johor bahru")),
+    ("Philippines", ("manila", "makati", "cebu", "taguig", "quezon city")),
+    ("Indonesia", ("jakarta", "bandung", "surabaya", "bali", "denpasar")),
+    ("Vietnam", ("hanoi", "ho chi minh city", "saigon", "da nang")),
+    ("Thailand", ("bangkok", "chiang mai", "phuket")),
+    ("Bangladesh", ("dhaka", "chittagong")),
+    ("Pakistan", ("karachi", "lahore", "islamabad", "rawalpindi")),
+    ("Sri Lanka", ("colombo", "kandy", "galle", "moratuwa", "negombo")),
+    ("Nepal", ("kathmandu",)),
+    ("United Arab Emirates", ("dubai", "abu dhabi", "sharjah")),
+    ("Israel", ("tel aviv", "jerusalem", "haifa")),
+    ("Turkey", ("istanbul", "ankara", "izmir")),
+    ("Saudi Arabia", ("riyadh", "jeddah", "dammam")),
+    ("Qatar", ("doha",)),
+    ("Australia", ("sydney", "melbourne", "brisbane", "perth", "adelaide",
+                   "canberra", "gold coast", "hobart")),
+    ("New Zealand", ("auckland", "wellington", "christchurch")),
+    ("Brazil", ("sao paulo", "rio de janeiro", "brasilia",
+                "belo horizonte", "porto alegre", "curitiba", "recife")),
+    ("Argentina", ("buenos aires", "rosario")),
+    ("Chile", ("santiago", "valparaiso")),
+    ("Colombia", ("bogota", "medellin")),
+    ("Mexico", ("mexico city", "cdmx", "guadalajara", "monterrey",
+                "queretaro", "tijuana", "puebla")),
+    ("Peru", ("lima",)),
+    ("Uruguay", ("montevideo",)),
+    ("South Africa", ("cape town", "johannesburg", "durban", "pretoria",
+                      "sandton")),
+    ("Nigeria", ("lagos", "abuja")),
+    ("Kenya", ("nairobi",)),
+    ("Egypt", ("cairo", "giza")),
+    ("Ghana", ("accra",)),
+)
+
 _COUNTRY_REGION: dict[str, str] = {c: region for c, region, _ in _COUNTRIES}
 _ALIAS_TO_COUNTRY: dict[str, str] = {}
+_CITY_TO_COUNTRY: dict[str, str] = {}
+# Multi-word cities are safe to match as a phrase inside a longer location;
+# single-word ones are only matched as an exact segment (avoids "reading",
+# "cambridge" etc. matching ordinary prose).
+_CITY_PHRASE_ALIASES: list[tuple[str, str]] = []
 
 # Aliases long enough to match as a word-boundary phrase inside a longer string
 # (2-letter ISO codes are intentionally excluded to avoid false positives).
@@ -151,6 +257,16 @@ for _country, _region, _aliases in _COUNTRIES:
         if len(_alias) >= 4 and " " not in _alias:
             _PHRASE_ALIASES.append((_norm(_alias), _country))
 _PHRASE_ALIASES.sort(key=lambda pair: -len(pair[0]))
+
+for _country, _aliases in _CITIES:
+    if _country not in _COUNTRY_REGION:
+        continue
+    for _alias in _aliases:
+        key = _norm(_alias)
+        _CITY_TO_COUNTRY[key] = _country
+        if " " in key:
+            _CITY_PHRASE_ALIASES.append((key, _country))
+_CITY_PHRASE_ALIASES.sort(key=lambda pair: -len(pair[0]))
 
 # Region-only tokens accepted by the ``region`` filter.
 _REGIONS = ("Africa", "Asia", "Europe", "Middle East", "North America",
@@ -197,12 +313,14 @@ def normalize_location(location: Any) -> tuple[str, str]:
     if _is_remote(text):
         return REMOTE, REMOTE
 
-    # 1. the whole string is a known country/alias.
-    country = _ALIAS_TO_COUNTRY.get(text)
+    # 1. the whole string is a known country/alias (or a known city).
+    country = _ALIAS_TO_COUNTRY.get(text) or _CITY_TO_COUNTRY.get(text)
     if country:
         return country, _COUNTRY_REGION[country]
 
     # 2. "City, Country" / "City, State, Country": check segments right-to-left.
+    #    A country beats a city, so "London, UK" -> United Kingdom, while
+    # "New York, NY" falls back to the city -> United States.
     segments = [seg.strip() for seg in raw.split(",") if seg.strip()]
     for segment in reversed(segments):
         seg = _norm(segment)
@@ -210,12 +328,17 @@ def normalize_location(location: Any) -> tuple[str, str]:
             continue
         if _is_remote(seg):
             return REMOTE, REMOTE
-        country = _ALIAS_TO_COUNTRY.get(seg)
+        country = _ALIAS_TO_COUNTRY.get(seg) or _CITY_TO_COUNTRY.get(seg)
         if country:
             return country, _COUNTRY_REGION[country]
 
     # 3. a known country name appearing as a whole-word phrase in the text.
     for alias, country in _PHRASE_ALIASES:
+        if _has_phrase(text, alias):
+            return country, _COUNTRY_REGION[country]
+
+    # 4. likewise for multi-word city names ("based in San Francisco").
+    for alias, country in _CITY_PHRASE_ALIASES:
         if _has_phrase(text, alias):
             return country, _COUNTRY_REGION[country]
 
@@ -232,7 +355,7 @@ def canonical_country(value: Any) -> str:
         return ""
     if _is_remote(text):
         return REMOTE
-    return _ALIAS_TO_COUNTRY.get(text, "")
+    return _ALIAS_TO_COUNTRY.get(text) or _CITY_TO_COUNTRY.get(text, "")
 
 
 def canonical_region(value: Any) -> str:

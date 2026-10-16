@@ -18,6 +18,46 @@ from models.job import (
 )
 from models.storage import SQLiteBackend, select_backend
 
+# A jobs table created before the industry/role/country columns existed.
+_LEGACY_SQLITE_SCHEMA = """
+    CREATE TABLE jobs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL DEFAULT '',
+        company TEXT NOT NULL DEFAULT '',
+        location TEXT NOT NULL DEFAULT '',
+        description TEXT NOT NULL DEFAULT '',
+        raw_description TEXT NOT NULL DEFAULT '',
+        url TEXT NOT NULL DEFAULT '',
+        source TEXT NOT NULL DEFAULT '',
+        posted_at TEXT NOT NULL DEFAULT '',
+        overall_risk_level TEXT NOT NULL DEFAULT 'Low',
+        risk_categories TEXT NOT NULL DEFAULT '[]',
+        confidence TEXT NOT NULL DEFAULT 'Low',
+        key_indicators TEXT NOT NULL DEFAULT '[]',
+        recommended_actions TEXT NOT NULL DEFAULT '[]',
+        employer_verification TEXT NOT NULL DEFAULT '{}',
+        summary TEXT NOT NULL DEFAULT '',
+        hybrid_score REAL NOT NULL DEFAULT 0.0,
+        rule_score REAL NOT NULL DEFAULT 0.0,
+        ml_score REAL NOT NULL DEFAULT 0.0,
+        scanned_at TEXT NOT NULL DEFAULT '',
+        UNIQUE(url)
+    );
+    CREATE TABLE IF NOT EXISTS scan_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        started_at TEXT NOT NULL DEFAULT '',
+        finished_at TEXT NOT NULL DEFAULT '',
+        sources TEXT NOT NULL DEFAULT '[]',
+        fetched INTEGER NOT NULL DEFAULT 0,
+        evaluated INTEGER NOT NULL DEFAULT 0,
+        stored INTEGER NOT NULL DEFAULT 0,
+        skipped INTEGER NOT NULL DEFAULT 0,
+        duplicates INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'unknown',
+        errors TEXT NOT NULL DEFAULT '{}'
+    );
+"""
+
 
 def _sample(url="https://example.com/jobs/1"):
     return JobRecord(
@@ -246,47 +286,9 @@ def test_sqlite_migrates_old_schema_in_place(tmp_path):
     """A jobs table created before the industry/role feature is lifted to
     the current schema on init_db, keeping existing rows ("Other")."""
     path = str(tmp_path / "legacy.db")
-    legacy = """
-    CREATE TABLE jobs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL DEFAULT '',
-        company TEXT NOT NULL DEFAULT '',
-        location TEXT NOT NULL DEFAULT '',
-        description TEXT NOT NULL DEFAULT '',
-        raw_description TEXT NOT NULL DEFAULT '',
-        url TEXT NOT NULL DEFAULT '',
-        source TEXT NOT NULL DEFAULT '',
-        posted_at TEXT NOT NULL DEFAULT '',
-        overall_risk_level TEXT NOT NULL DEFAULT 'Low',
-        risk_categories TEXT NOT NULL DEFAULT '[]',
-        confidence TEXT NOT NULL DEFAULT 'Low',
-        key_indicators TEXT NOT NULL DEFAULT '[]',
-        recommended_actions TEXT NOT NULL DEFAULT '[]',
-        employer_verification TEXT NOT NULL DEFAULT '{}',
-        summary TEXT NOT NULL DEFAULT '',
-        hybrid_score REAL NOT NULL DEFAULT 0.0,
-        rule_score REAL NOT NULL DEFAULT 0.0,
-        ml_score REAL NOT NULL DEFAULT 0.0,
-        scanned_at TEXT NOT NULL DEFAULT '',
-        UNIQUE(url)
-    );
-    CREATE TABLE IF NOT EXISTS scan_history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        started_at TEXT NOT NULL DEFAULT '',
-        finished_at TEXT NOT NULL DEFAULT '',
-        sources TEXT NOT NULL DEFAULT '[]',
-        fetched INTEGER NOT NULL DEFAULT 0,
-        evaluated INTEGER NOT NULL DEFAULT 0,
-        stored INTEGER NOT NULL DEFAULT 0,
-        skipped INTEGER NOT NULL DEFAULT 0,
-        duplicates INTEGER NOT NULL DEFAULT 0,
-        status TEXT NOT NULL DEFAULT 'unknown',
-        errors TEXT NOT NULL DEFAULT '{}'
-    );
-    """
     backend = SQLiteBackend(path)
     with backend._connect() as conn:  # noqa: SLF001 (test uses legacy API)
-        conn.executescript(legacy)
+        conn.executescript(_LEGACY_SQLITE_SCHEMA)
         conn.execute(
             "INSERT INTO jobs (title, url) VALUES ('Legacy Job', "
             "'https://example.com/legacy')")
@@ -301,3 +303,35 @@ def test_sqlite_migrates_old_schema_in_place(tmp_path):
     assert job["region"] == ""
     # Migration is idempotent.
     init_db(path)
+
+
+def test_sqlite_backfills_location_for_legacy_rows(tmp_path):
+    """Rows stored before the country/region columns existed are normalized
+    from their location on init, so the dashboard pickers aren't left empty."""
+    path = str(tmp_path / "legacy_loc.db")
+    backend = SQLiteBackend(path)
+    with backend._connect() as conn:  # noqa: SLF001 (test uses legacy API)
+        conn.executescript(_LEGACY_SQLITE_SCHEMA)
+        conn.execute(
+            "INSERT INTO jobs (title, location, url) VALUES "
+            "('Berlin Job', 'Berlin, Germany', 'https://example.com/berlin')")
+        conn.execute(
+            "INSERT INTO jobs (title, location, url) VALUES "
+            "('London Job', 'London', 'https://example.com/london')")
+        conn.execute(
+            "INSERT INTO jobs (title, location, url) VALUES "
+            "('Remote Job', 'Remote', 'https://example.com/remote')")
+        conn.commit()
+
+    init_db(path)
+    berlin = get_job(1, path)
+    assert (berlin["country"], berlin["region"]) == ("Germany", "Europe")
+    # A bare city with no country token is resolved too.
+    assert get_job(2, path)["country"] == "United Kingdom"
+    assert get_job(3, path)["country"] == "Remote"
+    assert location_options(path)["countries"] == [
+        "Germany", "Remote", "United Kingdom"]
+    # Idempotent: a second init neither duplicates nor clears the values.
+    init_db(path)
+    assert location_options(path)["countries"] == [
+        "Germany", "Remote", "United Kingdom"]
