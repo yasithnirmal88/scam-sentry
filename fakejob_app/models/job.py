@@ -146,6 +146,18 @@ def count_jobs(risk_level: Optional[str] = None, source: Optional[str] = None,
             risk_level, source, query, industry, role, country, region, remote)
 
 
+def list_all_jobs(limit: int = 2000, db_path: Optional[str] = None,
+                  risk_level: Optional[str] = None, source: Optional[str] = None,
+                  industry: Optional[str] = None, role: Optional[str] = None,
+                  country: Optional[str] = None, region: Optional[str] = None,
+                  remote: Optional[bool] = None) -> list[dict[str, Any]]:
+    """Up to ``limit`` stored jobs (bounded), for CV matching candidates."""
+    with _lock:
+        return select_backend(db_path).list_all_jobs(
+            limit=limit, risk_level=risk_level, source=source, industry=industry,
+            role=role, country=country, region=region, remote=remote)
+
+
 def location_options(db_path: Optional[str] = None) -> dict[str, list[str]]:
     """Distinct countries/regions present in the store (for the pickers)."""
     with _lock:

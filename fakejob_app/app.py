@@ -48,6 +48,8 @@ from scipy.sparse import hstack, csr_matrix
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 import config
+import cv_matcher
+import cv_utils
 import fraud_features
 from fraud_features import extract_all_features, FEATURE_KEYS
 from text_processing import preprocess
@@ -58,7 +60,7 @@ from risk.indicators import analyze_indicators
 from risk.engine import assess_risk, has_critical
 from risk.verification import verify_employer
 from risk.actions import generate_actions
-from models.job import (count_jobs, get_job, init_db, list_jobs,
+from models.job import (count_jobs, get_job, init_db, list_all_jobs, list_jobs,
                         location_options, risk_counts)
 from scanner import list_sources
 
@@ -511,6 +513,18 @@ def _parse_remote(value):
     return None
 
 
+def _parse_bool(value, default=False):
+    """Parse a boolean flag; returns ``default`` for absent/garbage values."""
+    if value is None:
+        return default
+    v = str(value).strip().lower()
+    if v in ("1", "true", "yes", "y", "on"):
+        return True
+    if v in ("0", "false", "no", "n", "off"):
+        return False
+    return default
+
+
 @app.route("/api/jobs", methods=["GET"])
 @limiter.limit(lambda: config.RATE_LIMIT_READ)
 def api_list_jobs():
@@ -563,6 +577,118 @@ def api_get_job(job_id):
     if not job:
         return jsonify({"error": "Job not found."}), 404
     return jsonify(job)
+
+
+def _match_param(name):
+    """Read a filter from query args / form first, then a JSON body."""
+    if name in request.values:
+        return request.values.get(name)
+    body = request.get_json(silent=True) or {}
+    return body.get(name)
+
+
+def _match_int(name, default, hard_max):
+    """Parse an int filter; None when present but invalid (caller 400s)."""
+    raw = _match_param(name)
+    if raw is None or str(raw).strip() == "":
+        return default
+    try:
+        return max(0, min(int(raw), hard_max))
+    except (TypeError, ValueError):
+        return None
+
+
+@app.route("/api/match/cv", methods=["POST"])
+@limiter.limit(lambda: config.RATE_LIMIT_MATCH)
+def api_match_cv():
+    """Rank already-scanned jobs against a CV (relevance, not risk).
+
+    Body: multipart ``file`` (PDF/TXT/DOCX) OR JSON ``{"cv_text": "..."}``.
+    Optional filters (query/form/JSON): ``min_fit`` (0-100), ``risk_level``,
+    ``exclude_risky`` (drop High+Critical), ``source``, ``industry``, ``role``,
+    ``country``, ``region``, ``remote``, ``limit``. The Risk Engine stays the
+    only source of a job's risk level; this endpoint never changes it and never
+    sends the CV text to an LLM.
+    """
+    cv_text = ""
+    extraction = "pasted-text"
+
+    upload = request.files.get("file")
+    if upload is not None and upload.filename:
+        ext = os.path.splitext(upload.filename)[1].lower()
+        if ext not in config.CV_ALLOWED_EXTENSIONS:
+            return jsonify({"error": "Unsupported CV file type. Please upload "
+                                      "a PDF, TXT, or DOCX file."}), 400
+        file_bytes = upload.read()
+        try:
+            cv_text, extraction = cv_utils.extract_cv_text(upload.filename, file_bytes)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        except Exception:
+            logger.exception("CV extraction failed")
+            return jsonify({"error": "Could not read the uploaded CV. Please "
+                                      "try a different PDF, TXT, or DOCX file."}), 400
+    else:
+        body = request.get_json(silent=True) or {}
+        cv_text = str(body.get("cv_text") or request.form.get("cv_text")
+                      or request.args.get("cv_text") or "")
+
+    if len(cv_text.strip()) < config.CV_MIN_TEXT_LENGTH:
+        return jsonify({"error": "Could not find enough text in the CV. Upload "
+                                  "a clearer file or paste more CV text (at least "
+                                  f"{config.CV_MIN_TEXT_LENGTH} characters)."}), 400
+
+    min_fit = _match_int("min_fit", 0, 100)
+    limit = _match_int("limit", 50, 100)
+    if min_fit is None or limit is None:
+        return jsonify({"error": "Invalid numeric filter (min_fit / limit)."}), 400
+
+    risk_level = _match_param("risk_level")
+    exclude_risky = _parse_bool(_match_param("exclude_risky"), default=False)
+    candidate_filters = {
+        "source": _match_param("source"),
+        "industry": _match_param("industry"),
+        "role": _match_param("role"),
+        "country": _match_param("country"),
+        "region": _match_param("region"),
+        "remote": _parse_remote(_match_param("remote")),
+    }
+    try:
+        candidates = list_all_jobs(limit=config.CV_MAX_JOBS, **candidate_filters)
+    except Exception:
+        logger.exception("Failed to load match candidates")
+        return jsonify({"error": "Could not load scanned jobs."}), 500
+
+    signals = cv_matcher.extract_signals(cv_text)
+    matches = cv_matcher.match_jobs(
+        cv_text, candidates, signals=signals, min_fit=min_fit,
+        risk_level=risk_level, exclude_risky=exclude_risky, limit=limit)
+
+    return jsonify({
+        "cv": {
+            "extraction": extraction,
+            "summary": cv_matcher.summarize(signals),
+            "skills": signals["skills"],
+            "tools": signals["tools"],
+            "role_titles": signals["role_titles"],
+            "keywords": signals["keywords"],
+            "sections": signals["sections"],
+            "word_count": signals["word_count"],
+        },
+        "matches": matches,
+        "total_matches": len(matches),
+        "candidate_jobs": len(candidates),
+        "filters": {
+            "min_fit": min_fit,
+            "risk_level": (risk_level or "").capitalize() if risk_level else "",
+            "exclude_risky": exclude_risky,
+            **candidate_filters,
+        },
+        "disclaimer": ("Relevance matching only -- it ranks scanned jobs by fit "
+                       "to your CV, not a guarantee of suitability or hireability. "
+                       "Risk levels come from the Scam Sentry Risk Engine and are "
+                       "never changed by matching."),
+    })
 
 
 def _scan_request_authorized():

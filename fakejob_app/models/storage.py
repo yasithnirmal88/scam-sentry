@@ -182,6 +182,22 @@ class _BaseBackend:
                 f"ORDER BY scanned_at DESC, id DESC "
                 f"LIMIT {self._p('limit')} OFFSET {self._p('offset')}")
 
+    def list_all_jobs(self, limit: int = 2000, risk_level=None, source=None,
+                      industry=None, role=None, country=None, region=None,
+                      remote=None) -> list[dict[str, Any]]:
+        """Up to ``limit`` rows matching the filters, newest first.
+
+        Used by the CV matcher as its candidate pool. Unlike ``list_jobs`` this
+        allows a much larger window (still hard-capped) so matching sees the
+        whole store instead of a dashboard page.
+        """
+        where, params = self._filters(risk_level, source, None, industry, role,
+                                      country, region, remote)
+        params["limit"] = coerce_limit(limit, default=2000, hard_max=5000)
+        sql = (f"SELECT * FROM jobs {where} "
+               f"ORDER BY scanned_at DESC, id DESC LIMIT {self._p('limit')}")
+        return [row_to_job(r) for r in self._fetch_all(sql, params)]
+
     # interface -----------------------------------------------------------
     def init(self) -> str:  # pragma: no cover - overridden
         raise NotImplementedError

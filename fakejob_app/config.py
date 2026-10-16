@@ -49,6 +49,21 @@ ALLOWED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg"}
 MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB
 
 # ---------------------------------------------------------------------------
+# CV-based job matching (read-only relevance aid beside the Risk Engine).
+# CVs use a separate, smaller allowlist than the single-job analyzer. Matching
+# ranks ALREADY-scanned jobs against a CV; it never changes a risk verdict and
+# never sends CV text to any LLM.
+# ---------------------------------------------------------------------------
+CV_ALLOWED_EXTENSIONS = {".pdf", ".txt", ".docx"}
+CV_MIN_TEXT_LENGTH = int(os.getenv("CV_MIN_TEXT_LENGTH", "40"))
+# Cap how many stored jobs are considered as match candidates (bound the work).
+CV_MAX_JOBS = int(os.getenv("CV_MAX_JOBS", "2000"))
+# Explainable blend of TF-IDF cosine similarity + skill/tool term overlap.
+# Should sum to 1.0.
+CV_TFIDF_WEIGHT = float(os.getenv("CV_TFIDF_WEIGHT", "0.6"))
+CV_TERM_WEIGHT = float(os.getenv("CV_TERM_WEIGHT", "0.4"))
+
+# ---------------------------------------------------------------------------
 # Upload / OCR hardening (DoS & resource-abuse controls). Uploads are
 # untrusted: bound how many PDF pages we read, cap the OCR rasterization DPI,
 # and cap the pixel budget of any single decoded image. All env-overridable.
@@ -188,6 +203,9 @@ RATE_LIMIT_SCAN = os.getenv("RATE_LIMIT_SCAN", "5/minute").strip()
 # the write endpoints (analyze/scan) and sized so live scan polling and normal
 # dashboard browsing are never throttled; it still blunts bulk scraping.
 RATE_LIMIT_READ = os.getenv("RATE_LIMIT_READ", "240/minute").strip()
+# CV matching (POST /api/match/cv) does file parsing + scoring over the stored
+# jobs, so it is a write-ish endpoint; throttle it like analyze/scan.
+RATE_LIMIT_MATCH = os.getenv("RATE_LIMIT_MATCH", "30/minute").strip()
 # Reverse-proxy trust for the real client IP. Render (and similar PaaS) place a
 # single proxy in front of the app, so request.remote_addr is the proxy, not the
 # user, and every request lands in one rate-limit bucket. Trust this many

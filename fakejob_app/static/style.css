@@ -1788,17 +1788,28 @@ textarea#job-text::placeholder {
   display: block;
   text-decoration: none;
   color: inherit;
+  cursor: pointer;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border-subtle);
   border-radius: 14px;
   padding: 16px;
   transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
-
-.job-card:hover {
+.job-card:hover,
+.job-card:focus-visible {
   transform: translateY(-3px);
   border-color: rgba(0, 240, 255, 0.45);
   box-shadow: 0 8px 24px -4px rgba(0, 240, 255, 0.15);
+  outline: none;
+}
+.job-source-link {
+  color: #67e8f9;
+  text-decoration: none;
+  border-bottom: 1px dotted rgba(103, 232, 249, 0.5);
+}
+.job-source-link:hover {
+  color: #a5f3fc;
+  border-bottom-color: #a5f3fc;
 }
 
 .job-card-top {
@@ -2025,4 +2036,146 @@ textarea#job-text::placeholder {
     flex-direction: column;
     text-align: center;
   }
+}
+
+/* ---- CV matcher panel ------------------------------------------------- */
+.cv-matcher {
+  margin-bottom: 18px;
+}
+.cv-intro {
+  font-size: 0.88rem;
+  opacity: 0.78;
+  margin: 8px 0 14px;
+  max-width: 72ch;
+}
+.cv-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+.cv-file {
+  flex: 1 1 260px;
+  font: inherit;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 9px 12px;
+  min-height: 42px;
+}
+.cv-paste {
+  margin-top: 10px;
+  font-size: 0.85rem;
+}
+.cv-paste summary {
+  cursor: pointer;
+  opacity: 0.8;
+}
+.cv-text {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  font: inherit;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 10px 12px;
+  resize: vertical;
+}
+.cv-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+  margin-top: 14px;
+}
+.cv-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.78rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+.cv-check {
+  padding-bottom: 10px;
+}
+.cv-status {
+  margin-top: 14px;
+}
+.cv-status.is-error {
+  color: #fb7185;
+}
+.cv-signals {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.cv-signals-head {
+  font-size: 0.82rem;
+  opacity: 0.8;
+  margin-bottom: 8px;
+}
+.cv-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.cv-chip {
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(6, 182, 212, 0.14);
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  color: #67e8f9;
+}
+.cv-results {
+  margin-top: 14px;
+}
+.cv-result {
+  cursor: default;
+}
+.cv-result:hover {
+  transform: none;
+}
+.cv-fit {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: #34d399;
+  white-space: nowrap;
+}
+.cv-result-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.cv-matched {
+  margin-top: 8px;
+  font-size: 0.8rem;
+  color: #67e8f9;
+  font-family: var(--font-mono);
+}
+.cv-reason {
+  margin-top: 8px;
+  font-size: 0.84rem;
+  opacity: 0.8;
+}
+.cv-result .job-card-foot {
+  justify-content: space-between;
+  align-items: center;
+}
+.cv-result .job-card-foot a {
+  color: #67e8f9;
+  text-decoration: none;
+}
+.cv-result .job-card-foot a:hover {
+  text-decoration: underline;
 }
