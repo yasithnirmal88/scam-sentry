@@ -82,6 +82,28 @@ def test_anonymous_flag_ignored_when_token_set(client, monkeypatch):
     assert ok.status_code == 400
 
 
+def test_scan_401_hint_guides_anonymous_setup(client, monkeypatch):
+    """The fail-closed 401 carries a dashboard-facing hint (no token set)."""
+    monkeypatch.setattr(config, "SCAN_API_TOKEN", "")
+    monkeypatch.setattr(config, "SCAN_ALLOW_ANONYMOUS", False)
+    body = client.post("/api/scan", json={}).get_json()
+    assert "error" in body and "hint" in body
+    assert "SCAN_ALLOW_ANONYMOUS=true" in body["hint"]
+    assert "SCAN_API_TOKEN" not in body["error"]  # hint, not the secret itself
+
+
+def test_scan_401_hint_when_token_configured(client, monkeypatch):
+    """With a token set the hint points at the X-Scan-Token header."""
+    monkeypatch.setattr(config, "SCAN_API_TOKEN", "secret-token")
+    monkeypatch.setattr(config, "SCAN_ALLOW_ANONYMOUS", False)
+    body = client.post("/api/scan", json={}).get_json()
+    assert "X-Scan-Token" in body["error"]
+    assert "X-Scan-Token" in body["hint"]
+    # The hint must never leak the configured token value.
+    assert "secret-token" not in body["error"]
+    assert "secret-token" not in body["hint"]
+
+
 # --- rate limiting (429) ---------------------------------------------------
 
 def _analyze(client, text):

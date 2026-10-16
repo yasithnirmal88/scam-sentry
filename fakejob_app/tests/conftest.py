@@ -7,6 +7,10 @@ backend (test container or external DB).
 
 import os
 
+# Tests must be deterministic regardless of a developer's local .env, so force
+# config to read only the real environment before it is imported below.
+os.environ.setdefault("SCAM_SENTRY_NO_DOTENV", "1")
+
 import pytest
 
 from models.storage import PostgresBackend
