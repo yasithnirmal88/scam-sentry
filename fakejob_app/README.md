@@ -39,6 +39,8 @@ next steps.
 - No browser automation — liveness is inferred from posting dates and
   wording, not live page checks.
 - No accounts, no email alerts, no auto-applying — it never acts on your behalf.
+- No hireability guarantee. CV matching ranks *relevance* to your CV; it does
+  not predict whether you will be hired, and it is not an ATS score.
 
 ## How it works
 
@@ -148,9 +150,13 @@ export LLM_MODEL=gpt-4o-mini
   normalized on save (best-effort, rules in `location.py`; display/filter aid
   only, never part of the risk verdict) into a country + region. Filters are
   applied server-side via `/api/jobs?country=&region=&remote=`.
+- **CV-based job matching** (`/dashboard` panel or `POST /api/match/cv`):
+  upload a CV (PDF / TXT / DOCX) or paste its text, and the scanned jobs are
+  ranked by relevance — each result still shows the Risk Engine's safety level.
+  See [CV job matching](#cv-job-matching).
 - One-click scans from the UI, background scheduler, `scan.py` CLI
 - Optional LLM enhancement layer (OpenAI-compatible; off by default)
-- 230+ automated tests (`pytest`)
+- 390+ automated tests (`pytest`)
 
 ## Running it locally
 
@@ -348,12 +354,85 @@ board that fails is skipped and logged without aborting the scan.
 | `/api/analyze/file` | POST multipart `file` | Single-job risk report (OCR) |
 | `/api/jobs?risk_level=&source=&industry=&role=&country=&region=&remote=&q=&limit=&offset=` | GET | Scanned jobs + per-level counts (`industry`/`role` filter by the auto-classified taxonomy fields; `country`/`region` match the normalized location — country aliases like `USA`/`UK` resolve to their canonical name; `remote=true|false` toggles remote/worldwide vs on-site). The response also carries `countries` and `regions` picker options (global, unaffected by the current filters). `total` is the count matching the current filters; `global_total` is the unfiltered count across all sources |
 | `/api/jobs/<id>` | GET | One stored job with full risk report |
+| `/api/match/cv` | POST multipart `file` (PDF/TXT/DOCX) **or** JSON `{"cv_text": "..."}` | Rank stored jobs by relevance to a CV. Optional filters: `min_fit` (0-100), `risk_level`, `exclude_risky` (drop High+Critical), `source`, `industry`, `role`, `country`, `region`, `remote`, `limit`. Returns extracted CV signals + ranked `matches` (each with `fit_score`, `matched_terms`, `reason`, and the job's unchanged engine `risk_level`). Relevance only — never a risk verdict |
 | `/api/scan` | POST `{"sources": [...], "limit": N}` + `X-Scan-Token` header | Async scan → `202`; `?sync=1` to wait. `401` without a valid `SCAN_API_TOKEN`, `429` when over the rate limit |
 | `/api/scan/status` | GET | Running/idle + last recorded run |
 | `/api/scan/history?limit=` | GET | Recent scan runs, newest first (id, status, stored/fetched/skipped/duplicates, sources) — rendered on the dashboard |
 | `/api/sources` | GET | Registered scanner names |
 | `/api/taxonomy` | GET | World industry categories + the job roles under each (powers the dashboard's industry/role pickers) |
 | `/api/health` | GET | `{"status": "ok", "model_loaded": false, "model": {...}}` — `model_loaded` flips to `true` after the first `/api/analyze` (the ML model loads lazily); `model` is the model card (source/estimator/samples/accuracy) |
+
+## CV job matching
+
+CV matching answers a **different question** from the Risk Engine:
+
+- **Risk Engine** → *is this posting safe?* (authoritative; stored per job).
+- **CV Matcher** → *is this posting relevant to this candidate?*
+
+The matcher only ranks jobs that are **already stored** by the scanner; it needs
+no live source and never changes a risk level. It lives in `cv_matcher.py`
+(scoring) and `cv_utils.py` (text extraction), and is exposed as the
+"🎯 Match Jobs to Your CV" panel on the dashboard and as `POST /api/match/cv`.
+
+**Supported inputs.** `.pdf` (text layer, with OCR fallback for scanned PDFs —
+reusing `ocr_utils`), `.txt`, and `.docx` (parsed with the standard library, no
+extra dependency). Uploads are capped at 10 MB and restricted to that
+allowlist; the CV is processed in-request and **never stored**. You can also
+paste CV text instead of uploading a file.
+
+### How a match score is built (transparent, no deep learning)
+
+1. **Signal extraction** — the CV text is scanned for a curated skill/tool
+   vocabulary (explicit `matched_terms`), role titles (reusing `taxonomy.py`),
+  frequent keywords, and simple section headings (`skills`, `experience`, …).
+- **TF-IDF + cosine similarity** measures overall wording similarity between
+  the CV and each job's title/role/description.
+- A **blended score** `0-100` combines the two
+  (`CV_TFIDF_WEIGHT` × cosine + `CV_TERM_WEIGHT` × term-overlap, both defaults
+  in `config.py`).
+
+Each result carries `fit_score`, `matched_terms`, a short human `reason`, and
+the job's **unchanged** `risk_level`. Default ordering is fit-first with a
+safety preference: higher `fit_score` ranks higher, but **Critical postings are
+pushed to the very bottom** and are never a top recommendation. The dashboard
+panel hides High/Critical matches by default (`exclude_risky`).
+
+Example request/response:
+
+```bash
+curl -X POST https://<host>/api/match/cv \
+  -F "file=@my_cv.pdf" -F "min_fit=20" -F "exclude_risky=1"
+```
+
+```json
+{
+  "cv": {"summary": "Detected 3 skill(s), 5 tool(s), 1 likely role(s) from 42 words.",
+         "tools": ["aws", "django", "docker", "postgresql", "python"],
+         "skills": [], "role_titles": ["Software Engineer"],
+         "keywords": ["python", "backend", "..."], "sections": ["skills"]},
+  "matches": [
+    {"job_id": 12, "title": "Python Backend Engineer", "company": "Acme",
+     "location": "Berlin, Germany", "source": "remoteok",
+     "risk_level": "Low", "fit_score": 71,
+     "matched_terms": ["python", "django", "postgresql", "docker", "aws"],
+     "reason": "Matches your CV on: python, django, postgresql, docker, aws."}
+  ],
+  "total_matches": 1, "candidate_jobs": 240,
+  "disclaimer": "Relevance matching only -- it ranks scanned jobs by fit ..."}
+
+### Design rules & limitations
+
+- **Never a risk verdict.** Matching copies the engine's `risk_level` through
+  unchanged; it can never upgrade or downgrade a job's safety.
+- **Never a guarantee.** The `disclaimer` field and UI state plainly that a
+  high fit score is relevance, *not* a promise of suitability or hireability.
+- **Critical is never a top recommendation.** Critical listings are ranked
+  last by default and can be excluded entirely with `exclude_risky`.
+- **No CV is stored.** Text is extracted and scored in-request; nothing is
+  persisted and no candidate profile/account is required.
+- **No LLM involvement.** CV text is never sent to the optional LLM layer.
+- Practical, not perfect: signals come from a curated keyword vocabulary plus
+  TF-IDF, so unusual formats/titles or very short CVs will match less well.
 
 ## Environment variables
 
@@ -673,14 +752,17 @@ fakejob_app/
 ├── config.py             # All settings (env-overridable)
 ├── scan.py               # Scanner CLI (cron / daemon)
 ├── taxonomy.py           # world industry/role classification for the dashboard pickers
+├── location.py           # country/region normalization for the dashboard filters
+├── cv_utils.py           # CV upload text extraction (PDF/TXT/DOCX)
+├── cv_matcher.py         # CV -> scanned-job relevance scoring (not risk)
 ├── risk/                 # indicators, engine, llm_enhancer, verification, actions
 ├── scanner/              # base.py + remoteok/remotive/arbeitnow/jobicy
 ├── services/             # scanner_service, evaluation_service, scheduler
 ├── models/job.py         # public storage API (selects backend per call)
 ├── models/storage.py     # SQLiteBackend + PostgresBackend
 ├── templates/            # index, dashboard, job_detail
-├── static/               # style.css, script.js, dashboard.js
-├── tests/                # pytest suite (260+ tests)
+├── static/               # style.css, script.js, dashboard.js, cv_matcher.js
+├── tests/                # pytest suite (390+ tests)
 ├── pytest.ini / .coveragerc   # test + coverage config (gate lives here)
 ├── Dockerfile / .env.example / requirements.txt
 └── artifacts/            # trained model artifacts (auto-generated)

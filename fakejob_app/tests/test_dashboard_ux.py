@@ -57,6 +57,20 @@ def test_scan_history_limited_and_tolerant(db, tmp_path):
     assert list_scan_history(db_path=str(tmp_path / "missing.db")) == []
 
 
+def test_dashboard_has_cv_matcher_panel(history_client):
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    html = (root / "templates" / "dashboard.html").read_text(encoding="utf-8")
+    js = (root / "static" / "cv_matcher.js").read_text(encoding="utf-8")
+    assert 'id="cv-matcher"' in html
+    assert 'id="cv-file"' in html and 'id="btn-match"' in html
+    assert 'id="cv-hide-risky"' in html
+    assert "/api/match/cv" in js
+    page = history_client.get("/dashboard")
+    assert page.status_code == 200
+    assert b"Match Jobs to Your CV" in page.data
+
+
 def test_api_scan_history(history_client):
     res = history_client.get("/api/scan/history")
     assert res.status_code == 200

@@ -141,6 +141,50 @@
       </div>
     </section>
 
+    <!-- CV-based job matching (relevance aid; risk stays engine-owned) -->
+    <section class="card cv-matcher" id="cv-matcher" aria-label="Match jobs to your CV">
+      <div class="evidence-header">
+        <h3>🎯 Match Jobs to Your CV</h3>
+        <span class="evidence-badge">relevance, not risk</span>
+      </div>
+      <p class="cv-intro">Upload your CV (PDF, TXT, or DOCX) and Scam Sentry ranks the scanned jobs that best fit you. Every result still shows the Risk Engine's safety level &mdash; matching never changes it.</p>
+
+      <div class="cv-controls">
+        <input type="file" id="cv-file" class="cv-file" accept=".pdf,.txt,.docx" aria-label="Upload your CV">
+        <button type="button" class="btn-primary" id="btn-match">
+          <span class="btn-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </span>
+          <span id="btn-match-label">Match Jobs</span>
+        </button>
+      </div>
+
+      <details class="cv-paste">
+        <summary>or paste CV text</summary>
+        <textarea id="cv-text" class="cv-text" rows="5" placeholder="Paste your CV / resume text here…"></textarea>
+      </details>
+
+      <div class="cv-filters">
+        <label class="cv-field">Minimum fit
+          <input type="number" id="cv-min-fit" class="dash-select" min="0" max="100" step="5" value="20">
+        </label>
+        <label class="cv-field">Risk level
+          <select id="cv-risk" class="dash-select">
+            <option value="">Any risk level</option>
+            <option value="Low">Low only</option>
+            <option value="Medium">Medium only</option>
+            <option value="High">High only</option>
+            <option value="Critical">Critical only</option>
+          </select>
+        </label>
+        <label class="scan-check cv-check"><input type="checkbox" id="cv-hide-risky" checked> Hide High &amp; Critical matches</label>
+      </div>
+
+      <div class="cv-status file-status-text" id="cv-status" aria-live="polite">Upload a CV to see your best-matching scanned jobs.</div>
+      <div class="cv-signals" id="cv-signals" hidden></div>
+      <div class="cv-results job-cards" id="cv-results"></div>
+    </section>
+
     <!-- Grouped job sections -->
     <div id="job-groups" aria-live="polite">
       {% for level in ["Critical", "High", "Medium", "Low"] %}
@@ -178,5 +222,6 @@
   </footer>
 
   <script src="{{ url_for('static', filename='dashboard.js') }}?v=10"></script>
+  <script src="{{ url_for('static', filename='cv_matcher.js') }}?v=1"></script>
 </body>
 </html>
