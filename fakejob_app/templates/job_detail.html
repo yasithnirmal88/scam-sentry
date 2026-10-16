@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{{ (job.title if job else "Not found") or "Job" }} &mdash; Scam Sentry Risk Report</title>
+  <title>{{ (job.title if job else "Not found") or "Job Case Dossier" }} &mdash; Scam Sentry Risk Report</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=6">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=10">
 </head>
 <body>
 
@@ -15,24 +15,31 @@
   <div class="ambient-glow glow-top"></div>
   <div class="ambient-glow glow-bottom"></div>
   <div class="grid-overlay"></div>
+  <div class="scan-beam beam-1"></div>
 
   <header class="navbar">
     <div class="nav-container">
       <div class="brand">
         <div class="brand-icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
             <path d="m9 12 2 2 4-4"/>
           </svg>
         </div>
         <div class="brand-info">
           <span class="brand-title">SCAM SENTRY</span>
-          <span class="brand-tag">Risk Report</span>
+          <span class="brand-tag">Job Threat Dossier</span>
         </div>
       </div>
-      <div class="nav-badges">
-        <a class="btn-ghost-sm nav-link" href="{{ url_for('dashboard') }}">&larr; Dashboard</a>
-        <a class="btn-ghost-sm nav-link" href="{{ url_for('index') }}">Single-Job Analyzer</a>
+      <div class="nav-links">
+        <a class="nav-link-btn" href="{{ url_for('dashboard') }}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+          <span>Back to Dashboard</span>
+        </a>
+        <a class="nav-link-btn" href="{{ url_for('index') }}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <span>Single-Job Analyzer</span>
+        </a>
       </div>
     </div>
   </header>
@@ -40,24 +47,38 @@
   <main class="main-layout">
     {% if not job %}
     <section class="card">
-      <div class="error-alert">{{ error or "Job not found." }}</div>
-      <div style="margin-top:14px;"><a class="btn-ghost-sm nav-link" href="{{ url_for('dashboard') }}">&larr; Back to Dashboard</a></div>
+      <div class="error-alert">{{ error or "The requested job posting could not be found in the database." }}</div>
+      <div style="margin-top:16px;">
+        <a class="btn-primary" href="{{ url_for('dashboard') }}">&larr; Back to Dashboard</a>
+      </div>
     </section>
     {% else %}
-    <section class="card">
+    
+    <!-- Hero Dossier Banner -->
+    <section class="card dossier-header-card">
       <div class="verdict-banner {{ 'fake' if job.overall_risk_level in ['Critical', 'High'] else 'genuine' }}">
         <div class="verdict-main">
-          <span class="verdict-tag">RISK REPORT &bull; {{ job.source or "scan" }} &bull; {{ job.posted_at or "date unknown" }}</span>
+          <div class="dossier-meta-tags">
+            <span class="verdict-tag">CASE DOSSIER #{{ job.id }} &bull; INGESTED VIA {{ job.source | upper or "FEED" }} &bull; {{ job.posted_at or "DATE UNKNOWN" }}</span>
+          </div>
+          
           <div class="verdict-title-row">
             <span class="stamp-badge {{ 'fake' if job.overall_risk_level in ['Critical', 'High'] else 'genuine' }}">
-              {{ {"Critical": "🚨 CRITICAL", "High": "🔴 HIGH", "Medium": "🟡 MEDIUM", "Low": "🟢 LOW"}.get(job.overall_risk_level, job.overall_risk_level) }}
+              {{ {"Critical": "🚨 CRITICAL THREAT", "High": "🔴 HIGH RISK", "Medium": "🟡 MEDIUM RISK", "Low": "🟢 LOW RISK"}.get(job.overall_risk_level, job.overall_risk_level) }}
             </span>
-            <span class="risk-pill {{ job.overall_risk_level.upper() }}">{{ job.confidence }} confidence</span>
+            <span class="risk-pill {{ job.overall_risk_level.upper() }}">{{ job.confidence }} Confidence</span>
           </div>
-          <h2 style="margin:10px 0 4px">{{ job.title }}</h2>
-          <p class="score-sub-label">{{ job.company }}{% if job.location %} &bull; {{ job.location }}{% endif %}</p>
-          <p style="margin-top:8px">{{ job.summary }}</p>
-          <div class="sample-buttons" style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+          
+          <h1 class="dossier-job-title">{{ job.title }}</h1>
+          <p class="score-sub-label">
+            <strong>{{ job.company }}</strong>
+            {% if job.location %} &bull; <span>{{ job.location }}</span>{% endif %}
+            {% if job.url %}&bull; <a href="{{ job.url }}" target="_blank" rel="noopener noreferrer" class="link-external">Original Posting Link &nearr;</a>{% endif %}
+          </p>
+          
+          <p class="dossier-summary-text">{{ job.summary }}</p>
+          
+          <div class="sample-buttons" style="margin-top:14px; display:flex; gap:8px; flex-wrap:wrap;">
             {% for cat in job.risk_categories %}
             <span class="sample-chip legit">{{ cat }}</span>
             {% endfor %}
@@ -72,83 +93,168 @@
             {% endif %}
           </div>
         </div>
+
         <div class="dial-container">
           <svg viewBox="0 0 120 120" class="gauge-svg">
             <circle cx="60" cy="60" r="50" class="gauge-bg"></circle>
-            <circle cx="60" cy="60" r="50" class="gauge-fill" style="stroke-dashoffset: {{ 314.159 - 314.159 * job.hybrid_score }}; stroke: {{ '#f43f5e' if job.overall_risk_level in ['Critical','High'] else ('#f59e0b' if job.overall_risk_level == 'Medium' else '#10b981') }}"></circle>
+            <circle cx="60" cy="60" r="50" class="gauge-fill" style="stroke-dashoffset: {{ 314.159 - 314.159 * (job.hybrid_score if job.hybrid_score <= 1 else job.hybrid_score/100) }}; stroke: {{ '#f43f5e' if job.overall_risk_level in ['Critical','High'] else ('#f59e0b' if job.overall_risk_level == 'Medium' else '#10b981') }}"></circle>
           </svg>
           <div class="gauge-content">
-            <span class="gauge-value">{{ (job.hybrid_score * 100) | round | int }}</span>
+            <span class="gauge-value">{{ ((job.hybrid_score if job.hybrid_score <= 1 else job.hybrid_score/100) * 100) | round | int }}</span>
             <span class="gauge-unit">%</span>
           </div>
         </div>
       </div>
 
+      <!-- Technical Telemetry Grid -->
       <div class="metrics-grid">
-        <div class="metric-card"><div class="metric-label">Hybrid Score</div><div class="metric-val">{{ (job.hybrid_score * 100) | round(1) }}%</div><div class="metric-meta">supporting signal</div></div>
-        <div class="metric-card"><div class="metric-label">Rule Score</div><div class="metric-val">{{ (job.rule_score * 100) | round(1) }}%</div><div class="metric-meta">indicator weight</div></div>
-        <div class="metric-card"><div class="metric-label">ML Probability</div><div class="metric-val">{{ (job.ml_score * 100) | round(1) }}%</div><div class="metric-meta">synthetic-trained &middot; supporting signal</div></div>
-        <div class="metric-card"><div class="metric-label">Scanned At</div><div class="metric-val truncate">{{ job.scanned_at[:10] if job.scanned_at else "—" }}</div><div class="metric-meta">{{ job.source or "" }}</div></div>
-      </div>
-
-      <div class="disclaimer-callout" style="margin-bottom:14px;">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        <p>The ML probability is a supporting signal from a model trained on a synthetic dataset; the risk verdict is set by the deterministic Risk Engine, never by the ML score.</p>
-      </div>
-
-      <div class="evidence-section">
-        <div class="evidence-header"><h3>Key Indicators</h3><span class="evidence-badge">{{ job.key_indicators | length }} signals</span></div>
-        {% if job.key_indicators %}
-        <div class="evidence-cards">
-          {% for ind in job.key_indicators %}
-          <div class="evidence-item">
-            <div class="evidence-body">
-              <strong>{{ ind.name }} [{{ ind.id }}]</strong>
-              <p>{{ ind.explanation }}</p>
-              {% if ind.evidence %}<p style="opacity:.75"><em>&ldquo;{{ ind.evidence }}&rdquo;</em></p>{% endif %}
-            </div>
-            <span class="ev-badge {{ ind.severity.upper() }}">{{ ind.severity }}</span>
-          </div>
-          {% endfor %}
+        <div class="metric-card">
+          <div class="metric-label">Hybrid Risk Score</div>
+          <div class="metric-val">{{ ((job.hybrid_score if job.hybrid_score <= 1 else job.hybrid_score/100) * 100) | round(1) }}%</div>
+          <div class="metric-meta">weighted signal</div>
         </div>
-        {% else %}
-        <div class="no-evidence-box"><span>No fraud indicators detected in this listing.</span></div>
-        {% endif %}
-      </div>
-
-      <div class="evidence-section">
-        <div class="evidence-header"><h3>Employer Verification</h3></div>
-        <div class="no-evidence-box"><span>Website: {{ job.employer_verification.company_website }} &bull; Email match: {{ job.employer_verification.email_domain_match }} &bull; Careers page: {{ job.employer_verification.role_on_careers_page }}. {{ job.employer_verification.notes }}</span></div>
-      </div>
-
-      <div class="evidence-section">
-        <div class="evidence-header"><h3>Recommended Actions</h3></div>
-        <div class="evidence-cards">
-          {% for a in job.recommended_actions %}
-          <div class="evidence-item"><div class="evidence-body"><p>{{ a }}</p></div></div>
-          {% endfor %}
+        <div class="metric-card">
+          <div class="metric-label">Rule Fraud Score</div>
+          <div class="metric-val">{{ ((job.rule_score if job.rule_score <= 1 else job.rule_score/100) * 100) | round(1) }}%</div>
+          <div class="metric-meta">deterministic indicators</div>
         </div>
-      </div>
-
-      <details class="text-collapsible">
-        <summary><span>View Job Description</span></summary>
-        <div class="extracted-box"><pre>{{ job.description[:4000] }}</pre></div>
-      </details>
-
-      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
-        {% if job.url %}<a class="btn-primary" href="{{ job.url }}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;">View Original Posting ↗</a>{% endif %}
-        <a class="btn-ghost-sm nav-link" href="{{ url_for('dashboard') }}">&larr; Back to Dashboard</a>
+        <div class="metric-card">
+          <div class="metric-label">ML Model Score</div>
+          <div class="metric-val">{{ ((job.ml_score if job.ml_score <= 1 else job.ml_score/100) * 100) | round(1) }}%</div>
+          <div class="metric-meta">GradientBoosting probability</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Ingested Date</div>
+          <div class="metric-val truncate">{{ job.scanned_at[:10] if job.scanned_at else "—" }}</div>
+          <div class="metric-meta">Source: {{ job.source or "Direct" }}</div>
+        </div>
       </div>
 
       <div class="disclaimer-callout" style="margin-top:14px;">
-        <p>Risk levels are evidence-based assessments, never absolute verdicts. Always verify employers directly before sharing sensitive information or sending money.</p>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <p>The ML probability is a supporting signal from a model trained on a synthetic-trained dataset; the risk verdict is set by the deterministic Risk Engine, never by the ML score.</p>
       </div>
     </section>
+
+    <!-- Employer Verification Status Card -->
+    {% if job.employer_verification %}
+    <section class="card" style="margin-top:20px;">
+      <div class="evidence-header">
+        <div class="evidence-header-left">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><circle cx="12" cy="11" r="3"/></svg>
+          <h3>Employer Legitimacy &amp; Identity Verification</h3>
+        </div>
+      </div>
+      <div class="metrics-grid" style="margin-top:14px;">
+        <div class="metric-card">
+          <div class="metric-label">Corporate Website</div>
+          <div class="metric-val truncate" style="font-size:1rem">{{ job.employer_verification.company_website or "Not identified" }}</div>
+          <div class="metric-meta">domain lookup</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Email Domain Match</div>
+          <div class="metric-val" style="font-size:1rem">{{ job.employer_verification.email_domain_match or "N/A" }}</div>
+          <div class="metric-meta">corporate inbox check</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Official Careers Role</div>
+          <div class="metric-val" style="font-size:1rem">{{ job.employer_verification.role_on_careers_page or "Unverified" }}</div>
+          <div class="metric-meta">portal verification</div>
+        </div>
+      </div>
+      {% if job.employer_verification.notes %}
+      <div class="extracted-box" style="margin-top:12px; font-size:0.88rem; opacity:0.9;">
+        <strong>Verification Notes:</strong> {{ job.employer_verification.notes }}
+      </div>
+      {% endif %}
+    </section>
+    {% endif %}
+
+    <!-- Key Indicators Section -->
+    <section class="card" style="margin-top:20px;">
+      <div class="evidence-header">
+        <div class="evidence-header-left">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <h3>Fired Risk Indicators &amp; Red Flags</h3>
+        </div>
+        <span class="evidence-badge">{{ job.key_indicators | length }} signals detected</span>
+      </div>
+      
+      {% if job.key_indicators %}
+      <div class="evidence-cards" style="margin-top:14px;">
+        {% for ind in job.key_indicators %}
+        <div class="evidence-item">
+          <div class="evidence-body">
+            <strong>{{ ind.id }} &bull; {{ ind.name or ind.label }}</strong>
+            <p>{{ ind.detail or ind.explanation or ind.evidence }}</p>
+            {% if ind.quote %}
+            <div class="evidence-quote">&ldquo;{{ ind.quote }}&rdquo;</div>
+            {% endif %}
+          </div>
+          <span class="ev-badge {{ ind.severity }}">{{ ind.severity }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="no-evidence-box" style="margin-top:14px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        <span>No severe risk indicators triggered for this vacancy.</span>
+      </div>
+      {% endif %}
+    </section>
+
+    <!-- Recommended Candidate Safety Actions -->
+    {% if job.recommended_actions %}
+    <section class="card" style="margin-top:20px;">
+      <div class="evidence-header">
+        <div class="evidence-header-left">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 11 12 14 22 4"/></svg>
+          <h3>Actionable Candidate Remediation Steps</h3>
+        </div>
+      </div>
+      <div class="actions-cards" style="margin-top:14px;">
+        {% for act in job.recommended_actions %}
+        <div class="action-item">
+          <span class="action-bullet">&#10004;</span>
+          <div class="action-content">
+            <p>{{ act.action if act is mapping else act }}</p>
+            {% if act is mapping and act.detail %}<p>{{ act.detail }}</p>{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
+    <!-- Original Text Box -->
+    <details class="text-collapsible" style="margin-top:20px;">
+      <summary>
+        <span>Inspect Raw Advertisement Text</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </summary>
+      <div class="extracted-box">
+        <pre>{{ job.description or "No full description saved." }}</pre>
+      </div>
+    </details>
+
     {% endif %}
   </main>
 
   <footer class="footer">
-    <div class="footer-wrap"><span>Scam Sentry &bull; Job Risk Scanner</span></div>
+    <div class="footer-wrap">
+      <div class="footer-brand">
+        <strong>Scam Sentry</strong> &bull; Intelligent Fake Job Advertisement Detection System
+      </div>
+      <div class="footer-sub">
+        General Sir John Kotelawala Defence University &bull; Faculty of Computing &bull; Group 44
+      </div>
+      <div class="footer-links">
+        <a href="{{ url_for('index') }}">Single-Job Analyzer</a>
+        <a href="{{ url_for('dashboard') }}">Risk Dashboard</a>
+      </div>
+    </div>
   </footer>
+
+  <script src="{{ url_for('static', filename='script.js') }}?v=10"></script>
 </body>
 </html>

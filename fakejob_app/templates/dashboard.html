@@ -7,22 +7,24 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=10">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=11">
 </head>
 <body>
 
-  <!-- Background Ambience -->
+  <!-- Background Ambience & Canvas -->
   <canvas id="bg-canvas" class="bg-canvas"></canvas>
   <div class="ambient-glow glow-top"></div>
   <div class="ambient-glow glow-bottom"></div>
   <div class="grid-overlay"></div>
+  <div class="scan-beam beam-1"></div>
+  <div class="scan-beam beam-2"></div>
 
   <!-- Header -->
   <header class="navbar">
     <div class="nav-container">
       <div class="brand">
         <div class="brand-icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
             <path d="m9 12 2 2 4-4"/>
           </svg>
@@ -33,12 +35,24 @@
         </div>
       </div>
 
+      <div class="nav-links">
+        <a class="nav-link-btn" href="{{ url_for('index') }}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <span>Single-Job Analyzer</span>
+        </a>
+        <a class="nav-link-btn active" href="{{ url_for('dashboard') }}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          <span>Risk Dashboard</span>
+          <span class="nav-pill-badge">Live</span>
+        </a>
+      </div>
+
       <div class="nav-badges">
-        <a class="btn-ghost-sm nav-link" href="{{ url_for('index') }}">Single-Job Analyzer</a>
         <div class="system-status">
           <span class="pulse-dot"></span>
-          <span>AI Engine Active</span>
+          <span>Scanners Online</span>
         </div>
+        <span class="badge-tag">Group 44 &bull; KDU</span>
       </div>
     </div>
   </header>
@@ -46,30 +60,54 @@
   <!-- Main Content -->
   <main class="main-layout">
 
-    <div class="hero-section">
-      <div class="hero-chip">Live Scan &bull; {{ sources | join(" + ") }} &bull; Risk Engine Evaluated</div>
-      <h1 class="hero-title">Scanned Jobs by Risk Level</h1>
-      <p class="hero-desc">Every listing below was automatically evaluated by the Scam Sentry Risk Engine. Click any job for the full evidence report.</p>
-    </div>
+    <section class="hero-section">
+      <div class="hero-badge-wrap">
+        <div class="hero-chip">
+          <span class="chip-sparkle">&#128737;</span>
+          <span>Live Board Scans &bull; {{ sources | length }} Active Sources &bull; Risk Engine Evaluated</span>
+        </div>
+      </div>
+      <h1 class="hero-title">Continuous Job Scam <span class="gradient-text">Surveillance</span></h1>
+      <p class="hero-desc">Every vacancy below is ingested from public job boards and automatically evaluated by the Scam Sentry Risk Engine. Click any job to inspect its full evidence dossier.</p>
+    </section>
 
     <!-- Scan status strip -->
     <div class="metrics-grid dash-status" aria-live="polite">
-      <div class="metric-card"><div class="metric-label">Total Jobs Stored</div><div class="metric-val" id="total-jobs">{{ total }}</div><div class="metric-meta">across all sources</div></div>
-      <div class="metric-card"><div class="metric-label">Last Scan</div><div class="metric-val truncate" id="last-scan-time">{{ (last_scan.finished_at[:16] if last_scan and last_scan.finished_at else "Never") | replace("T", " ") }}</div><div class="metric-meta" id="last-scan-detail">{% if last_scan %}{{ last_scan.stored }} stored &bull; {{ last_scan.fetched }} fetched{% else %}no scan recorded yet{% endif %}</div></div>
-      <div class="metric-card"><div class="metric-label">Last Scan Status</div><div class="metric-val" id="last-scan-status">{% if last_scan %}{{ last_scan.status }}{% else %}—{% endif %}</div><div class="metric-meta">success / partial / empty / failed</div></div>
+      <div class="metric-card">
+        <div class="metric-label">Total Jobs Stored</div>
+        <div class="metric-val" id="total-jobs">{{ total }}</div>
+        <div class="metric-meta">across all connected boards</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Last Ingestion Run</div>
+        <div class="metric-val truncate" id="last-scan-time">{{ (last_scan.finished_at[:16] if last_scan and last_scan.finished_at else "Never") | replace("T", " ") }}</div>
+        <div class="metric-meta" id="last-scan-detail">{% if last_scan %}{{ last_scan.stored }} stored &bull; {{ last_scan.fetched }} fetched{% else %}no scan recorded yet{% endif %}</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Last Scan Status</div>
+        <div class="metric-val" id="last-scan-status">{% if last_scan %}{{ last_scan.status }}{% else %}—{% endif %}</div>
+        <div class="metric-meta">success / partial / empty / failed</div>
+      </div>
     </div>
+
+    <!-- Error container -->
+    <div class="error-alert" id="dash-error" hidden style="margin-bottom:18px;"></div>
 
     <!-- First-run welcome (shown only when the database is empty) -->
     {% if total == 0 %}
     <section class="card welcome-banner" id="welcome-banner">
-      <h2>👋 Welcome to the Job Risk Scanner</h2>
-      <p>No jobs have been scanned yet. Run your first scan to pull live listings from public job boards — every posting is automatically evaluated by the Risk Engine and grouped below by risk level.</p>
+      <div class="welcome-icon-glow">&#128640;</div>
+      <h2>Welcome to the Scam Sentry Job Surveillance Network</h2>
+      <p>No listings have been ingested into your local repository yet. Launch your first live scan to pull active listings from public hiring boards &mdash; each posting will be graded and categorized in real time.</p>
       <div class="welcome-steps">
-        <span>1 &bull; Pick sources</span>
-        <span>2 &bull; Run scan</span>
+        <span>1 &bull; Pick target sources</span>
+        <span>2 &bull; Execute automated scan</span>
         <span>3 &bull; Review by risk level</span>
       </div>
-      <button type="button" class="btn-primary" id="btn-first-scan">
+      <button type="button" class="btn-primary" id="btn-first-scan" style="max-width:320px; margin:0 auto;">
+        <span class="btn-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        </span>
         <span>Run Your First Scan</span>
       </button>
     </section>
@@ -77,37 +115,60 @@
 
     <!-- Risk counts -->
     <div class="metrics-grid dash-counts">
-      <div class="metric-card dash-count" data-level="Critical"><div class="metric-label">🚨 Critical</div><div class="metric-val" id="count-critical">{{ counts.get('Critical', 0) }}</div><div class="metric-meta">immediate danger signals</div></div>
-      <div class="metric-card dash-count" data-level="High"><div class="metric-label">🔴 High</div><div class="metric-val" id="count-high">{{ counts.get('High', 0) }}</div><div class="metric-meta">multiple strong warnings</div></div>
-      <div class="metric-card dash-count" data-level="Medium"><div class="metric-label">🟡 Medium</div><div class="metric-val" id="count-medium">{{ counts.get('Medium', 0) }}</div><div class="metric-meta">proceed with caution</div></div>
-      <div class="metric-card dash-count" data-level="Low"><div class="metric-label">🟢 Low</div><div class="metric-val" id="count-low">{{ counts.get('Low', 0) }}</div><div class="metric-meta">no major indicators</div></div>
+      <div class="metric-card dash-count card-critical" data-level="Critical">
+        <div class="metric-label">🚨 Critical Threats</div>
+        <div class="metric-val text-critical" id="count-critical">{{ counts.get('Critical', 0) }}</div>
+        <div class="metric-meta">immediate advance-fee danger</div>
+      </div>
+      <div class="metric-card dash-count card-high" data-level="High">
+        <div class="metric-label">🔴 High Risk</div>
+        <div class="metric-val text-high" id="count-high">{{ counts.get('High', 0) }}</div>
+        <div class="metric-meta">multiple red flags &amp; mismatches</div>
+      </div>
+      <div class="metric-card dash-count card-medium" data-level="Medium">
+        <div class="metric-label">🟡 Medium Risk</div>
+        <div class="metric-val text-medium" id="count-medium">{{ counts.get('Medium', 0) }}</div>
+        <div class="metric-meta">suspicious channels, proceed with caution</div>
+      </div>
+      <div class="metric-card dash-count card-low" data-level="Low">
+        <div class="metric-label">🟢 Low Risk</div>
+        <div class="metric-val text-low" id="count-low">{{ counts.get('Low', 0) }}</div>
+        <div class="metric-meta">verified enterprise postings</div>
+      </div>
     </div>
 
-    <!-- Controls -->
+    <!-- Controls Card -->
     <section class="card dash-controls">
       <div class="dash-filters">
-        <div class="tab-switcher" role="tablist" id="risk-tabs">
-          <button type="button" class="tab-btn active" data-risk="" aria-pressed="true">All</button>
-          <button type="button" class="tab-btn" data-risk="Critical">🚨 Critical</button>
-          <button type="button" class="tab-btn" data-risk="High">🔴 High</button>
-          <button type="button" class="tab-btn" data-risk="Medium">🟡 Medium</button>
-          <button type="button" class="tab-btn" data-risk="Low">🟢 Low</button>
+        <div class="dash-controls-header">
+          <span class="control-label">FILTER BY RISK SEVERITY</span>
         </div>
+        <div class="tab-switcher" role="tablist" id="risk-tabs">
+          <button type="button" class="tab-btn active" data-risk="" aria-pressed="true">All Postings</button>
+          <button type="button" class="tab-btn btn-risk-crit" data-risk="Critical">🚨 Critical</button>
+          <button type="button" class="tab-btn btn-risk-high" data-risk="High">🔴 High</button>
+          <button type="button" class="tab-btn btn-risk-med" data-risk="Medium">🟡 Medium</button>
+          <button type="button" class="tab-btn btn-risk-low" data-risk="Low">🟢 Low</button>
+        </div>
+        
         <div class="dash-browse-title">Search by Industry &amp; Job Role</div>
         <div class="dash-filter-row">
-          <select id="filter-industry" class="dash-select" aria-label="Filter by industry">
-            <option value="">All industries</option>
-          </select>
-          <select id="filter-role" class="dash-select" aria-label="Filter by job role">
-            <option value="">All roles</option>
-          </select>
-          <select id="filter-source" class="dash-select" aria-label="Filter by source">
-            <option value="">All sources</option>
+          <div class="search-input-wrap">
+            <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="filter-q" class="dash-search" placeholder="Search by title, company, or keyword...">
+          </div>
+          <select id="filter-source" class="dash-select" aria-label="Filter by board source">
+            <option value="">All Sources</option>
             {% for s in sources %}
             <option value="{{ s }}">{{ s }}</option>
             {% endfor %}
           </select>
-          <input id="filter-q" class="dash-search" type="search" placeholder="Search title or company…" aria-label="Search jobs">
+          <select id="filter-industry" class="dash-select" aria-label="Filter by industry">
+            <option value="">All Industries</option>
+          </select>
+          <select id="filter-role" class="dash-select" aria-label="Filter by job role">
+            <option value="">All Job Roles</option>
+          </select>
         </div>
         <div class="dash-browse-title">Search by Country / Region</div>
         <div class="dash-filter-row">
@@ -125,23 +186,30 @@
         </div>
         <div class="dash-filter-summary" id="filter-summary" aria-live="polite"></div>
       </div>
+
       <div class="dash-scan">
+        <div class="dash-controls-header">
+          <span class="control-label">EXECUTE LIVE BOARD HARVEST</span>
+        </div>
         <div class="dash-scan-sources" id="scan-sources">
           {% for s in sources %}
-          <label class="scan-check"><input type="checkbox" value="{{ s }}" checked> {{ s }}</label>
+          <label class="scan-check">
+            <input type="checkbox" name="source" value="{{ s }}" checked>
+            <span>{{ s }}</span>
+          </label>
           {% endfor %}
         </div>
         <button type="button" class="btn-primary" id="btn-scan">
           <span class="btn-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
           </span>
           <span id="btn-scan-label">Run New Scan</span>
         </button>
-        <span class="file-status-text" id="scan-status" aria-live="polite">Idle — last scan results shown below.</span>
+        <div id="scan-status" class="dash-filter-summary" style="margin-top:6px;">Ready to scan public boards</div>
       </div>
     </section>
 
-    <!-- CV-based job matching (relevance aid; risk stays engine-owned) -->
+    <!-- CV-based job matching (relevance aid; never a risk verdict) -->
     <section class="card cv-matcher" id="cv-matcher" aria-label="Match jobs to your CV">
       <div class="evidence-header">
         <h3>🎯 Match Jobs to Your CV</h3>
@@ -185,39 +253,81 @@
       <div class="cv-results job-cards" id="cv-results"></div>
     </section>
 
-    <!-- Grouped job sections -->
-    <div id="job-groups" aria-live="polite">
-      {% for level in ["Critical", "High", "Medium", "Low"] %}
-      <section class="card dash-group" data-group="{{ level }}">
+    <!-- Grouped Job listing sections -->
+    <div id="job-groups">
+      <section class="card dash-group" data-group="Critical" style="margin-bottom:20px;">
         <div class="evidence-header">
-          <h3>{{ {"Critical": "🚨 Critical", "High": "🔴 High", "Medium": "🟡 Medium", "Low": "🟢 Low"}[level] }}</h3>
+          <div class="evidence-header-left">
+            <h3 style="color:#ff2d55;">🚨 Critical Threat Postings</h3>
+          </div>
           <span class="evidence-badge group-count">0</span>
         </div>
         <div class="job-cards"></div>
       </section>
-      {% endfor %}
+
+      <section class="card dash-group" data-group="High" style="margin-bottom:20px;">
+        <div class="evidence-header">
+          <div class="evidence-header-left">
+            <h3 style="color:#f43f5e;">🔴 High Risk Postings</h3>
+          </div>
+          <span class="evidence-badge group-count">0</span>
+        </div>
+        <div class="job-cards"></div>
+      </section>
+
+      <section class="card dash-group" data-group="Medium" style="margin-bottom:20px;">
+        <div class="evidence-header">
+          <div class="evidence-header-left">
+            <h3 style="color:#f59e0b;">🟡 Medium Risk Postings</h3>
+          </div>
+          <span class="evidence-badge group-count">0</span>
+        </div>
+        <div class="job-cards"></div>
+      </section>
+
+      <section class="card dash-group" data-group="Low" style="margin-bottom:20px;">
+        <div class="evidence-header">
+          <div class="evidence-header-left">
+            <h3 style="color:#10b981;">🟢 Low Risk / Verified Postings</h3>
+          </div>
+          <span class="evidence-badge group-count">0</span>
+        </div>
+        <div class="job-cards"></div>
+      </section>
     </div>
 
-    <!-- Recent scan runs -->
-    <section class="card dash-history" aria-label="Recent scan runs">
-      <div class="evidence-header">
-        <h3>Recent Scan Runs</h3>
+    <!-- Scan runs history -->
+    <details class="card dash-history">
+      <summary class="dash-history-summary">
+        <div class="dash-history-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span>Recent Scan Runs</span>
+        </div>
         <span class="evidence-badge" id="history-count">0 runs</span>
+      </summary>
+      <div class="scan-runs" id="scan-runs">
+        <!-- populated by dashboard.js -->
       </div>
-      <div class="no-evidence-box" id="history-empty">
-        <span>No scan runs recorded yet — run a scan and every run will be listed here.</span>
+      <div id="history-empty" class="no-evidence-box" style="margin-top:10px;" hidden>
+        <span>No previous scan runs recorded.</span>
       </div>
-      <div class="scan-runs" id="scan-runs"></div>
-    </section>
-
-    <div class="error-alert" id="dash-error" hidden></div>
+    </details>
 
   </main>
 
   <footer class="footer">
     <div class="footer-wrap">
-      <span>Scam Sentry &bull; Job Risk Scanner</span>
-      <span class="footer-sub">Risk levels are evidence-based assessments, never absolute verdicts.</span>
+      <div class="footer-brand">
+        <strong>Scam Sentry</strong> &bull; Intelligent Fake Job Advertisement Detection System
+      </div>
+      <div class="footer-sub">
+        General Sir John Kotelawala Defence University &bull; Faculty of Computing &bull; Group 44
+      </div>
+      <div class="footer-links">
+        <a href="{{ url_for('index') }}">Single-Job Analyzer</a>
+        <a href="{{ url_for('dashboard') }}">Risk Dashboard</a>
+        <a href="{{ url_for('health') }}">System Status</a>
+      </div>
     </div>
   </footer>
 

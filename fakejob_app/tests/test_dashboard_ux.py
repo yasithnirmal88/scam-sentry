@@ -81,7 +81,8 @@ def test_dashboard_cards_link_to_original_posting(history_client):
     assert 'rel="noopener noreferrer"' in js
     assert "job.url" in js
     detail = (root / "templates" / "job_detail.html").read_text(encoding="utf-8")
-    assert "View Original Posting" in detail
+    assert "job.url" in detail
+    assert 'target="_blank"' in detail
     assert 'rel="noopener noreferrer"' in detail
 
 
