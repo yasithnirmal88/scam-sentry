@@ -23,6 +23,7 @@ from contextlib import contextmanager
 from typing import Any, Iterator, Optional
 
 import config
+import location
 
 # Columns updated when a scan re-encounters a URL (posting fields are kept).
 _UPDATE_COLS = (
@@ -31,6 +32,7 @@ _UPDATE_COLS = (
     "confidence", "key_indicators", "recommended_actions",
     "employer_verification", "summary", "hybrid_score",
     "rule_score", "ml_score", "industry", "job_role", "scanned_at",
+    "country", "region",
 )
 
 _JOB_COLS = (
@@ -39,13 +41,16 @@ _JOB_COLS = (
     "confidence", "key_indicators", "recommended_actions",
     "employer_verification", "summary", "hybrid_score",
     "rule_score", "ml_score", "industry", "job_role", "scanned_at",
+    "country", "region",
 )
 
-# Lift an older jobs table (created before the industry/role feature) up to
-# the current schema. idempotent on SQLite via the PRAGMA check in init().
+# Lift an older jobs table (created before the industry/role/country features)
+# up to the current schema. idempotent on SQLite via the PRAGMA check in init().
 _MIGRATE_COLUMNS = (
     ("industry", "ALTER TABLE jobs ADD COLUMN industry TEXT NOT NULL DEFAULT 'Other'"),
     ("job_role", "ALTER TABLE jobs ADD COLUMN job_role TEXT NOT NULL DEFAULT 'Other'"),
+    ("country", "ALTER TABLE jobs ADD COLUMN country TEXT NOT NULL DEFAULT ''"),
+    ("region", "ALTER TABLE jobs ADD COLUMN region TEXT NOT NULL DEFAULT ''"),
 )
 
 _SCAN_COLS = (
@@ -112,7 +117,9 @@ class _BaseBackend:
 
     def _filters(self, risk_level: Optional[str], source: Optional[str],
                  query: Optional[str], industry: Optional[str] = None,
-                 role: Optional[str] = None) -> tuple[str, dict[str, Any]]:
+                 role: Optional[str] = None, country: Optional[str] = None,
+                 region: Optional[str] = None,
+                 remote: Optional[bool] = None) -> tuple[str, dict[str, Any]]:
         clauses: list[str] = []
         params: dict[str, Any] = {}
         rl = normalize_risk_level(risk_level)
@@ -130,6 +137,25 @@ class _BaseBackend:
         if role:
             clauses.append("job_role = " + self._p("role"))
             params["role"] = role
+        country = (country or "").strip()
+        if country:
+            # Match the normalized column, and fall back to the raw location
+            # text so legacy/unclassified rows ("Berlin, Germany") still match.
+            canonical = location.canonical_country(country) or country
+            clauses.append(
+                f"(country = {self._p('country')} "
+                f"OR location {self._like} {self._p('country_like')})")
+            params["country"] = canonical
+            params["country_like"] = f"%{canonical}%"
+        region = (region or "").strip()
+        if region:
+            canonical = location.canonical_region(region) or region
+            clauses.append(
+                f"(region = {self._p('region')} OR location {self._like} {self._p('region_like')})")
+            params["region"] = canonical
+            params["region_like"] = f"%{region}%"
+        if remote is not None:
+            clauses.append(self._remote_clause(bool(remote), params))
         if query:
             p = self._p("q")
             like = self._like
@@ -139,6 +165,17 @@ class _BaseBackend:
             params["q"] = f"%{query}%"
         where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
         return where, params
+
+    def _remote_clause(self, is_remote: bool, params: dict[str, Any]) -> str:
+        """Remote/on-site predicate over the location text (dialect-aware)."""
+        parts = ["country = " + self._p("rem_country")]
+        params["rem_country"] = location.REMOTE
+        for i, token in enumerate(("remote", "worldwide", "anywhere")):
+            key = "rem_tok_%d" % i
+            parts.append(f"location {self._like} " + self._p(key))
+            params[key] = f"%{token}%"
+        positive = "(" + " OR ".join(parts) + ")"
+        return positive if is_remote else "NOT " + positive
 
     def _list_sql(self, where: str) -> str:
         return (f"SELECT * FROM jobs {where} "
@@ -156,8 +193,10 @@ class _BaseBackend:
         raise NotImplementedError
 
     def list_jobs(self, risk_level, source, query, limit, offset,
-                  industry=None, role=None) -> list[dict[str, Any]]:
-        where, params = self._filters(risk_level, source, query, industry, role)
+                  industry=None, role=None, country=None, region=None,
+                  remote=None) -> list[dict[str, Any]]:
+        where, params = self._filters(risk_level, source, query, industry, role,
+                                      country, region, remote)
         params["limit"] = coerce_limit(limit)
         params["offset"] = coerce_offset(offset)
         rows = self._fetch_all(self._list_sql(where), params)
@@ -165,10 +204,28 @@ class _BaseBackend:
 
     def count_jobs(self, risk_level: Optional[str] = None, source: Optional[str] = None,
                    query: Optional[str] = None, industry: Optional[str] = None,
-                   role: Optional[str] = None) -> int:
-        where, params = self._filters(risk_level, source, query, industry, role)
+                   role: Optional[str] = None, country: Optional[str] = None,
+                   region: Optional[str] = None, remote: Optional[bool] = None) -> int:
+        where, params = self._filters(risk_level, source, query, industry, role,
+                                      country, region, remote)
         row = self._fetch_one(f"SELECT COUNT(*) AS n FROM jobs {where}", params)
         return int(row["n"]) if row else 0
+
+    def location_options(self) -> dict[str, list[str]]:
+        """Distinct non-empty countries/regions present, alphabetically."""
+        try:
+            countries = self._fetch_all(
+                "SELECT DISTINCT country FROM jobs WHERE country <> '' "
+                "ORDER BY country")
+            regions = self._fetch_all(
+                "SELECT DISTINCT region FROM jobs WHERE region <> '' "
+                "ORDER BY region")
+        except Exception:
+            return {"countries": [], "regions": []}
+        return {
+            "countries": [str(r["country"]) for r in countries],
+            "regions": [str(r["region"]) for r in regions],
+        }
 
     def risk_counts(self) -> dict[str, int]:
         rows = self._fetch_all(
@@ -227,6 +284,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     ml_score REAL NOT NULL DEFAULT 0.0,
     industry TEXT NOT NULL DEFAULT 'Other',
     job_role TEXT NOT NULL DEFAULT 'Other',
+    country TEXT NOT NULL DEFAULT '',
+    region TEXT NOT NULL DEFAULT '',
     scanned_at TEXT NOT NULL DEFAULT '',
     UNIQUE(url)
 );
@@ -234,6 +293,7 @@ CREATE INDEX IF NOT EXISTS idx_jobs_risk ON jobs(overall_risk_level);
 CREATE INDEX IF NOT EXISTS idx_jobs_source ON jobs(source);
 CREATE INDEX IF NOT EXISTS idx_jobs_industry ON jobs(industry);
 CREATE INDEX IF NOT EXISTS idx_jobs_role ON jobs(job_role);
+CREATE INDEX IF NOT EXISTS idx_jobs_country ON jobs(country);
 CREATE TABLE IF NOT EXISTS scan_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     started_at TEXT NOT NULL DEFAULT '',
@@ -370,6 +430,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     ml_score DOUBLE PRECISION NOT NULL DEFAULT 0.0,
     industry TEXT NOT NULL DEFAULT 'Other',
     job_role TEXT NOT NULL DEFAULT 'Other',
+    country TEXT NOT NULL DEFAULT '',
+    region TEXT NOT NULL DEFAULT '',
     scanned_at TEXT NOT NULL DEFAULT '',
     UNIQUE (url)
 );
@@ -377,6 +439,7 @@ CREATE INDEX IF NOT EXISTS idx_jobs_risk ON jobs (overall_risk_level);
 CREATE INDEX IF NOT EXISTS idx_jobs_source ON jobs (source);
 CREATE INDEX IF NOT EXISTS idx_jobs_industry ON jobs (industry);
 CREATE INDEX IF NOT EXISTS idx_jobs_role ON jobs (job_role);
+CREATE INDEX IF NOT EXISTS idx_jobs_country ON jobs (country);
 CREATE TABLE IF NOT EXISTS scan_history (
     id BIGSERIAL PRIMARY KEY,
     started_at TEXT NOT NULL DEFAULT '',

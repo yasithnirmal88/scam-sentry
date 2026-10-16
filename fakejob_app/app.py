@@ -58,7 +58,8 @@ from risk.indicators import analyze_indicators
 from risk.engine import assess_risk, has_critical
 from risk.verification import verify_employer
 from risk.actions import generate_actions
-from models.job import count_jobs, get_job, init_db, list_jobs, risk_counts
+from models.job import (count_jobs, get_job, init_db, list_jobs,
+                        location_options, risk_counts)
 from scanner import list_sources
 
 APP_DIR = config.APP_DIR
@@ -498,17 +499,32 @@ def _health_model_info():
 # Job Risk Scanner API (Phase 1)
 # ---------------------------------------------------------------------------
 
+def _parse_remote(value):
+    """Parse a remote=true/false query value; None when absent/unrecognized."""
+    if value is None:
+        return None
+    v = str(value).strip().lower()
+    if v in ("1", "true", "yes", "y", "remote"):
+        return True
+    if v in ("0", "false", "no", "n", "onsite", "on-site", "non-remote"):
+        return False
+    return None
+
+
 @app.route("/api/jobs", methods=["GET"])
 @limiter.limit(lambda: config.RATE_LIMIT_READ)
 def api_list_jobs():
     """List scanned jobs. Query params: risk_level, source, industry, role,
-    q, limit, offset."""
+    country, region, remote, q, limit, offset."""
     try:
         filters = {
             "risk_level": request.args.get("risk_level"),
             "source": request.args.get("source"),
             "industry": request.args.get("industry"),
             "role": request.args.get("role"),
+            "country": request.args.get("country"),
+            "region": request.args.get("region"),
+            "remote": _parse_remote(request.args.get("remote")),
             "query": request.args.get("q"),
         }
         jobs = list_jobs(
@@ -516,6 +532,7 @@ def api_list_jobs():
             offset=request.args.get("offset", 0),
             **filters,
         )
+        options = location_options()
         return jsonify({
             "jobs": jobs,
             # ``total`` is the number of jobs matching the current filters;
@@ -523,6 +540,9 @@ def api_list_jobs():
             "total": count_jobs(**filters),
             "global_total": count_jobs(),
             "counts": risk_counts(),
+            # Global picker options (unaffected by the current filters).
+            "countries": options.get("countries", []),
+            "regions": options.get("regions", []),
         })
     except Exception:
         # Log the full detail server-side; never echo internals (paths/SQL)

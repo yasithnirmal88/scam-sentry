@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+import location
 from models.storage import select_backend
 
 _lock = threading.Lock()
@@ -60,10 +61,20 @@ class JobRecord:
     ml_score: float = 0.0
     industry: str = "Other"
     job_role: str = "Other"
+    country: str = ""
+    region: str = ""
     scanned_at: str = ""
 
 
 def _job_payload(record: JobRecord) -> dict[str, Any]:
+    # Best-effort country/region normalization at write time so every stored
+    # row (new scans included) is filterable, regardless of caller. Explicit
+    # values win; otherwise infer from the free-text location.
+    country = (record.country or "").strip()
+    region = (record.region or "").strip()
+    if not country:
+        country, inferred_region = location.normalize_location(record.location)
+        region = region or inferred_region
     return {
         "title": record.title or "",
         "company": record.company or "",
@@ -85,6 +96,8 @@ def _job_payload(record: JobRecord) -> dict[str, Any]:
         "ml_score": float(record.ml_score or 0.0),
         "industry": record.industry or "Other",
         "job_role": record.job_role or "Other",
+        "country": country,
+        "region": region,
         "scanned_at": record.scanned_at or _now_iso(),
     }
 
@@ -113,19 +126,30 @@ def get_job(job_id: int, db_path: Optional[str] = None) -> Optional[dict[str, An
 def list_jobs(risk_level: Optional[str] = None, source: Optional[str] = None,
               query: Optional[str] = None, limit: int = 50, offset: int = 0,
               industry: Optional[str] = None, role: Optional[str] = None,
+              country: Optional[str] = None, region: Optional[str] = None,
+              remote: Optional[bool] = None,
               db_path: Optional[str] = None) -> list[dict[str, Any]]:
     with _lock:
         return select_backend(db_path).list_jobs(
-            risk_level, source, query, limit, offset, industry, role)
+            risk_level, source, query, limit, offset, industry, role,
+            country, region, remote)
 
 
 def count_jobs(risk_level: Optional[str] = None, source: Optional[str] = None,
                query: Optional[str] = None, industry: Optional[str] = None,
-               role: Optional[str] = None, db_path: Optional[str] = None) -> int:
+               role: Optional[str] = None, country: Optional[str] = None,
+               region: Optional[str] = None, remote: Optional[bool] = None,
+               db_path: Optional[str] = None) -> int:
     """Count stored jobs matching the given filters (all optional)."""
     with _lock:
         return select_backend(db_path).count_jobs(
-            risk_level, source, query, industry, role)
+            risk_level, source, query, industry, role, country, region, remote)
+
+
+def location_options(db_path: Optional[str] = None) -> dict[str, list[str]]:
+    """Distinct countries/regions present in the store (for the pickers)."""
+    with _lock:
+        return select_backend(db_path).location_options()
 
 
 def risk_counts(db_path: Optional[str] = None) -> dict[str, int]:
