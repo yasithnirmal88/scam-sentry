@@ -61,6 +61,29 @@ _SCAN_COLS = (
 _LEVELS = {"low", "medium", "high", "critical"}
 
 
+def location_backfill_updates(rows: Any) -> list[tuple[str, str, Any]]:
+    """``(country, region, id)`` updates for rows missing country/region.
+
+    Rows stored before the country/region columns existed get them defaulted to
+    ``''`` on migration, which leaves the dashboard pickers empty until the next
+    re-scan. This derives the values from the stored free-text ``location`` so
+    old data becomes filterable immediately. A row is skipped when both values
+    are already set, and only inferred values are written (never overwritten).
+    """
+    updates: list[tuple[str, str, Any]] = []
+    for row in rows:
+        country = (row["country"] or "").strip()
+        region = (row["region"] or "").strip()
+        if country and region:
+            continue
+        inferred_country, inferred_region = location.normalize_location(row["location"])
+        new_country = country or inferred_country
+        new_region = region or inferred_region
+        if new_country != country or new_region != region:
+            updates.append((new_country, new_region, row["id"]))
+    return updates
+
+
 def normalize_risk_level(risk_level: Optional[str]) -> Optional[str]:
     if not risk_level:
         return None
@@ -357,8 +380,20 @@ CREATE TABLE IF NOT EXISTS scan_history (
             # ALTER ... ADD COLUMN IF NOT EXISTS, hence the PRAGMA check).
             self._ensure_columns(conn)
             conn.executescript(self.SCHEMA)
+            self._backfill_locations(conn)
             conn.commit()
         return self.path
+
+    @staticmethod
+    def _backfill_locations(conn: sqlite3.Connection) -> None:
+        """Derive country/region for pre-existing rows (idempotent)."""
+        rows = conn.execute(
+            "SELECT id, location, country, region FROM jobs "
+            "WHERE location <> '' AND (country = '' OR region = '')").fetchall()
+        updates = location_backfill_updates(rows)
+        if updates:
+            conn.executemany(
+                "UPDATE jobs SET country = ?, region = ? WHERE id = ?", updates)
 
     @staticmethod
     def _ensure_columns(conn: sqlite3.Connection) -> None:
@@ -499,6 +534,16 @@ CREATE TABLE IF NOT EXISTS scan_history (
                     cur.execute(ddl.replace(
                         "ALTER TABLE jobs ADD COLUMN",
                         "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS"))
+                cur.execute(
+                    "SELECT id, location, country, region FROM jobs "
+                    "WHERE location <> '' AND (country = '' OR region = '')")
+                updates = location_backfill_updates(cur.fetchall())
+                if updates:
+                    cur.executemany(
+                        "UPDATE jobs SET country = %(country)s, "
+                        "region = %(region)s WHERE id = %(id)s",
+                        [{"country": c, "region": r, "id": i}
+                         for c, r, i in updates])
             conn.commit()
         return self.url
 
