@@ -1,17 +1,17 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Scam Sentry &mdash; AI Fake Job Detection System</title>
+  <title>Scam Sentry &mdash; AI Fake Job Detection &amp; Threat Intelligence</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=6">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=10">
 </head>
 <body>
 
-  <!-- Background Ambience & Cyber Network Canvas -->
+  <!-- Cyber Background Canvas & Atmosphere -->
   <canvas id="bg-canvas" class="bg-canvas"></canvas>
   <div class="ambient-glow glow-top"></div>
   <div class="ambient-glow glow-bottom"></div>
@@ -25,19 +25,30 @@
     <div class="nav-container">
       <div class="brand">
         <div class="brand-icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
             <path d="m9 12 2 2 4-4"/>
           </svg>
         </div>
         <div class="brand-info">
           <span class="brand-title">SCAM SENTRY</span>
-          <span class="brand-tag">Intelligent Job Verifier</span>
+          <span class="brand-tag">Intelligent Job Threat Verifier</span>
         </div>
       </div>
       
+      <div class="nav-links">
+        <a class="nav-link-btn active" href="{{ url_for('index') }}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <span>Single-Job Analyzer</span>
+        </a>
+        <a class="nav-link-btn" href="{{ url_for('dashboard') }}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          <span>Risk Dashboard</span>
+          <span class="nav-pill-badge">Live</span>
+        </a>
+      </div>
+
       <div class="nav-badges">
-        <a class="btn-ghost-sm nav-link" href="{{ url_for('dashboard') }}">Risk Dashboard</a>
         <div class="system-status">
           <span class="pulse-dot"></span>
           <span>AI Engine Active</span>
@@ -51,14 +62,46 @@
   <main class="main-layout">
     
     <!-- Hero Header -->
-    <div class="hero-section">
-      <div class="hero-chip">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-        Hybrid AI &bull; Machine Learning + Heuristic Fraud Analysis
+    <section class="hero-section">
+      <div class="hero-badge-wrap">
+        <div class="hero-chip">
+          <span class="chip-sparkle">&#10024;</span>
+          <span>Hybrid Threat Intelligence &bull; Heuristic Rules + Machine Learning</span>
+        </div>
       </div>
-      <h1 class="hero-title">Protecting Job Seekers from Online Employment Scams</h1>
-      <p class="hero-desc">Paste an advertisement text or upload job flyers (PDF / Image) to scan for upfront fees, fake domains, unrealistic compensation, and fraudulent patterns.</p>
-    </div>
+      
+      <h1 class="hero-title">Protecting Job Seekers from <span class="gradient-text">Employment Scams</span></h1>
+      <p class="hero-desc">Analyze suspicious job postings, employment flyers, or offer letters with multi-tier heuristic verification, OCR document forensics, and calibrated machine learning models.</p>
+
+      <!-- Hero Visual Banner Card -->
+      <div class="hero-telemetry-banner">
+        <div class="telemetry-img-wrap">
+          <img src="{{ url_for('static', filename='images/cyber_shield_hero.jpg') }}" alt="Cyber Shield Threat Intelligence" class="telemetry-bg-img">
+          <div class="telemetry-overlay"></div>
+        </div>
+        <div class="telemetry-content">
+          <div class="telemetry-item">
+            <span class="telemetry-num">10+</span>
+            <span class="telemetry-label">Public Boards Scanned</span>
+          </div>
+          <div class="telemetry-sep"></div>
+          <div class="telemetry-item">
+            <span class="telemetry-num">18</span>
+            <span class="telemetry-label">Graded Risk Indicators</span>
+          </div>
+          <div class="telemetry-sep"></div>
+          <div class="telemetry-item">
+            <span class="telemetry-num">Dual-OCR</span>
+            <span class="telemetry-label">PDF &amp; Image Forensics</span>
+          </div>
+          <div class="telemetry-sep"></div>
+          <div class="telemetry-item">
+            <span class="telemetry-num">100%</span>
+            <span class="telemetry-label">Deterministic Verdict</span>
+          </div>
+        </div>
+      </div>
+    </section>
 
     <!-- App Grid -->
     <div class="analyzer-grid">
@@ -67,34 +110,42 @@
       <section class="card intake-card">
         <div class="card-header">
           <div class="card-title-group">
-            <h2 class="card-title">Case Intake</h2>
-            <p class="card-subtitle">Select input method to analyze</p>
+            <div class="card-title-row">
+              <span class="card-icon-pill">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              </span>
+              <h2 class="card-title">Case Intake</h2>
+            </div>
+            <p class="card-subtitle">Choose your intake format to inspect</p>
           </div>
 
           <div class="tab-switcher" role="tablist">
             <button type="button" class="tab-btn active" data-tab="paste" role="tab">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-              Paste Text
+              <span>Paste Text</span>
             </button>
             <button type="button" class="tab-btn" data-tab="upload" role="tab">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              Upload Flyer
+              <span>Upload Flyer</span>
             </button>
           </div>
         </div>
 
         <!-- Sample Loaders -->
         <div class="sample-pills-bar">
-          <span class="sample-label">Quick Test Samples:</span>
+          <span class="sample-label">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            Quick Samples:
+          </span>
           <div class="sample-buttons">
-            <button type="button" class="sample-chip legit" id="load-sample-legit">
-              <span>&#10003;</span> Real Job Sample
+            <button type="button" class="sample-chip legit" id="load-sample-legit" title="Load genuine corporate vacancy">
+              <span class="sample-icon">&#10003;</span> Real Job Sample
             </button>
-            <button type="button" class="sample-chip fake" id="load-sample-fake">
-              <span>&#9888;</span> Upfront Fee Scam
+            <button type="button" class="sample-chip fake" id="load-sample-fake" title="Load sample with upfront fee trap">
+              <span class="sample-icon">&#9888;</span> Upfront Fee Scam
             </button>
-            <button type="button" class="sample-chip warn" id="load-sample-whatsapp">
-              <span>&#9888;</span> WhatsApp / High Pay
+            <button type="button" class="sample-chip warn" id="load-sample-whatsapp" title="Load sample with WhatsApp & high unrealistic pay">
+              <span class="sample-icon">&#9888;</span> WhatsApp / High Pay
             </button>
           </div>
         </div>
@@ -108,7 +159,7 @@
               rows="10"
             ></textarea>
             <div class="input-actions-bar">
-              <button type="button" class="btn-ghost-sm" id="btn-clear-text">Clear</button>
+              <button type="button" class="btn-ghost-sm" id="btn-clear-text">Clear Text</button>
               <span class="char-counter" id="char-count">0 characters</span>
             </div>
           </div>
@@ -126,8 +177,9 @@
           <label class="dropzone" id="dropzone" for="file-input">
             <input type="file" id="file-input" accept=".pdf,.png,.jpg,.jpeg" hidden>
             <div class="dz-glow"></div>
+            <div class="dz-scan-beam"></div>
             <div class="dz-icon-wrap">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             </div>
             <div class="dz-content">
               <strong id="dz-filename">Drop image or PDF flyer here</strong>
@@ -161,7 +213,7 @@
           <div class="pipe-arrow">&rarr;</div>
           <div class="pipe-step"><span>Rule Sweeper</span></div>
           <div class="pipe-arrow">&rarr;</div>
-          <div class="pipe-step highlight"><span>Classifier</span></div>
+          <div class="pipe-step highlight"><span>Risk Engine</span></div>
         </div>
 
       </section>
@@ -171,21 +223,24 @@
         
         <!-- Idle Placeholder -->
         <div class="placeholder-state" id="placeholder">
-          <div class="placeholder-icon">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <div class="placeholder-icon-wrap">
+            <div class="placeholder-pulse"></div>
+            <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><circle cx="12" cy="11" r="3"/></svg>
           </div>
-          <h3>Awaiting Advertisement</h3>
-          <p>Paste job content or upload a poster on the left, then click <strong>Examine Posting</strong> to see risk probability and detected indicators.</p>
+          <h3>Awaiting Advertisement Input</h3>
+          <p>Paste job content or upload an employment poster on the left, then click <strong>Examine Posting</strong> to launch forensic threat analysis and risk scoring.</p>
         </div>
 
         <!-- Scanning Loader -->
         <div class="scanning-state" id="scanning" hidden role="status" aria-live="polite">
           <div class="radar-spinner">
-            <div class="radar-ring"></div>
+            <div class="radar-sweep"></div>
+            <div class="radar-ring ring-1"></div>
+            <div class="radar-ring ring-2"></div>
             <div class="radar-dot"></div>
           </div>
           <h3 id="scanning-text">Analyzing document...</h3>
-          <p class="scanning-sub">Extracting features and scanning for known fraudulent signals</p>
+          <p class="scanning-sub">Extracting features and scanning for known fraudulent signals across rules and ML models</p>
         </div>
 
         <!-- Report Output -->
@@ -239,37 +294,28 @@
             </div>
           </div>
 
-          <!-- ML signal transparency (Phase 5): raw probability, calibration,
-               and provenance, so a number is never shown without its caveats. -->
+          <!-- ML Signal Transparency Details -->
           <details class="text-collapsible" id="ml-details">
             <summary>
-              <span>How the ML probability is derived</span>
+              <span>How the ML probability is derived &amp; calibrated</span>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
             </summary>
             <div class="extracted-box ml-note">
-              <p id="ml-note-text">The ML probability is a supporting signal only; the verdict is set by the deterministic Risk Engine.</p>
+              <p id="ml-caveat">The ML probability is a supporting signal from a Gradient Boosting classifier trained on a synthetic dataset; the authoritative risk verdict is determined by the rule-based Risk Engine.</p>
+              <p id="ml-raw-stats" style="margin-top:6px; font-family:var(--font-mono); font-size:0.8rem; opacity:0.8;"></p>
             </div>
           </details>
-
-          <!-- Risk Assessment Summary -->
-          <div class="evidence-section" id="risk-assessment-section">
-            <div class="evidence-header">
-              <h3>Risk Assessment</h3>
-              <span class="evidence-badge" id="confidence-badge">â€”</span>
-            </div>
-            <div class="no-evidence-box" id="risk-summary-box">
-              <span id="risk-summary">Awaiting analysis.</span>
-            </div>
-            <div class="sample-buttons" id="risk-categories" style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;"></div>
-          </div>
 
           <!-- Evidence List -->
           <div class="evidence-section">
             <div class="evidence-header">
-              <h3>Evidence &amp; Key Indicators</h3>
+              <div class="evidence-header-left">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                <h3>Evidence &amp; Detected Red Flags</h3>
+              </div>
               <span class="evidence-badge" id="evidence-count-badge">0 signals</span>
             </div>
-
+            
             <div class="no-evidence-box" id="no-evidence" hidden>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
               <span>No fraud indicators detected in this advertisement.</span>
@@ -278,22 +324,15 @@
             <div class="evidence-cards" id="evidence-list"></div>
           </div>
 
-          <!-- Employer Verification -->
-          <div class="evidence-section" id="verification-section">
+          <!-- Recommended Actions Section -->
+          <div class="actions-section" id="actions-section" hidden>
             <div class="evidence-header">
-              <h3>Employer Verification</h3>
+              <div class="evidence-header-left">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 11 12 14 22 4"/></svg>
+                <h3>Recommended Candidate Safety Actions</h3>
+              </div>
             </div>
-            <div class="no-evidence-box" id="verification-box">
-              <span id="verification-text">Not checked yet.</span>
-            </div>
-          </div>
-
-          <!-- Recommended Actions -->
-          <div class="evidence-section" id="actions-section">
-            <div class="evidence-header">
-              <h3>Recommended Actions</h3>
-            </div>
-            <div class="evidence-cards" id="actions-list"></div>
+            <div class="actions-cards" id="actions-list"></div>
           </div>
 
           <!-- Extracted Text Collapsible -->
@@ -310,27 +349,103 @@
           <!-- Disclaimer Note -->
           <div class="disclaimer-callout">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-            <p>This assessment is generated using AI heuristic rules and machine learning classification. Always verify employers directly before sharing sensitive financial information or depositing fees.</p>
+            <p>This assessment is generated using heuristic fraud rules and machine learning classification. Always independently verify employers through official corporate domain registries before depositing money or submitting confidential identity files.</p>
           </div>
 
         </article>
 
         <!-- Error Container -->
-        <div class="error-alert" id="error-box" hidden role="alert"></div>
+        <div class="error-alert" id="error-box" hidden></div>
 
       </section>
 
     </div>
+
+    <!-- Security Pillars & Architecture Showcase (Using Downloaded Visuals) -->
+    <section class="security-pillars-section">
+      <div class="section-header">
+        <span class="section-tag">ENGINE ARCHITECTURE</span>
+        <h2 class="section-title">Multi-Layered Detection Intelligence</h2>
+        <p class="section-desc">How Scam Sentry combines automated public scanners, deterministic rule engines, and forensic OCR to safeguard candidates.</p>
+      </div>
+
+      <div class="pillars-grid">
+        
+        <!-- Pillar 1 -->
+        <div class="pillar-card">
+          <div class="pillar-img-wrap">
+            <img src="{{ url_for('static', filename='images/cyber_shield_hero.jpg') }}" alt="Multi-Source Scanning" class="pillar-img">
+            <div class="pillar-img-badge">Continuous Scanning</div>
+          </div>
+          <div class="pillar-body">
+            <h3>Public Job Board Ingestion</h3>
+            <p>Monitors 10+ major hiring boards including RemoteOK, Greenhouse, Lever, and Himalayas. Automatically scores newly posted jobs to catch scam clusters before candidates apply.</p>
+            <div class="pillar-tags">
+              <span>RemoteOK</span>
+              <span>Greenhouse</span>
+              <span>Lever</span>
+              <span>Ashby</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pillar 2 -->
+        <div class="pillar-card">
+          <div class="pillar-img-wrap">
+            <img src="{{ url_for('static', filename='images/ai_threat_intel.jpg') }}" alt="Heuristic Risk Engine" class="pillar-img">
+            <div class="pillar-img-badge">Deterministic Rules</div>
+          </div>
+          <div class="pillar-body">
+            <h3>Heuristic Risk Engine</h3>
+            <p>Rules C1–C4, H1–H5, and M1–M5 scan for upfront fee extortion, suspicious email domains, non-work communication channels, and unrealistic salary promises with zero hallucination.</p>
+            <div class="pillar-tags">
+              <span>Domain Verification</span>
+              <span>Payment Scams</span>
+              <span>Calibrated ML</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pillar 3 -->
+        <div class="pillar-card">
+          <div class="pillar-img-wrap">
+            <img src="{{ url_for('static', filename='images/document_scanner.jpg') }}" alt="Optical Document Forensics" class="pillar-img">
+            <div class="pillar-img-badge">Forensic OCR</div>
+          </div>
+          <div class="pillar-body">
+            <h3>Optical Document Forensics</h3>
+            <p>Extracts text from screenshots, posters, and PDF brochures using Tesseract OCR and pdfplumber with DoS page-budget limits and resolution normalization.</p>
+            <div class="pillar-tags">
+              <span>PDF Parsing</span>
+              <span>Tesseract OCR</span>
+              <span>Image Normalization</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
   </main>
 
   <!-- Footer -->
   <footer class="footer">
     <div class="footer-wrap">
-      <span>Scam Sentry &bull; Intelligent Fake Job Advertisement Detection System</span>
-      <span class="footer-sub">General Sir John Kotelawala Defence University &bull; Faculty of Computing</span>
+      <div class="footer-brand">
+        <strong>Scam Sentry</strong> &bull; Intelligent Fake Job Advertisement Detection System
+      </div>
+      <div class="footer-sub">
+        General Sir John Kotelawala Defence University &bull; Faculty of Computing &bull; Group 44
+      </div>
+      <div class="footer-links">
+        <a href="{{ url_for('index') }}">Analyzer</a>
+        <a href="{{ url_for('dashboard') }}">Risk Dashboard</a>
+        <a href="{{ url_for('health') }}">API Health</a>
+        <a href="{{ url_for('api_list_sources') }}">Sources</a>
+      </div>
     </div>
   </footer>
 
-  <script src="{{ url_for('static', filename='script.js') }}?v=6"></script>
+  <script src="{{ url_for('static', filename='script.js') }}?v=10"></script>
 </body>
 </html>
