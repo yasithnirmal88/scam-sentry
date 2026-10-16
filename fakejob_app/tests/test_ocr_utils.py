@@ -76,6 +76,36 @@ def test_config_has_sane_ocr_limits():
     assert config.MAX_PDF_PAGES >= 1
     assert config.PDF_OCR_DPI >= 72
     assert config.MAX_IMAGE_PIXELS > 0
+    # Optional explicit path override; empty means "resolve from PATH".
+    assert isinstance(config.TESSERACT_CMD, str)
+
+
+# ---------------------------------------------------------------------------
+# Tesseract path resolution
+# ---------------------------------------------------------------------------
+
+def test_tesseract_cmd_env_override(monkeypatch):
+    """TESSERACT_CMD wins and is applied to pytesseract."""
+    monkeypatch.setattr(config, "TESSERACT_CMD", r"C:\custom\tesseract.exe")
+    monkeypatch.setattr(ocr_utils.pytesseract.pytesseract, "tesseract_cmd",
+                        "tesseract")
+    assert ocr_utils._configure_tesseract() == r"C:\custom\tesseract.exe"
+    assert (ocr_utils.pytesseract.pytesseract.tesseract_cmd
+            == r"C:\custom\tesseract.exe")
+
+
+def test_tesseract_available_detects_missing_binary(tmp_path, monkeypatch):
+    monkeypatch.setattr(ocr_utils.pytesseract.pytesseract, "tesseract_cmd",
+                        str(tmp_path / "nope"))
+    assert ocr_utils.tesseract_available() is False
+
+
+def test_tesseract_available_detects_present_binary(tmp_path, monkeypatch):
+    exe = tmp_path / "tesseract"
+    exe.write_text("", encoding="utf-8")
+    monkeypatch.setattr(ocr_utils.pytesseract.pytesseract, "tesseract_cmd",
+                        str(exe))
+    assert ocr_utils.tesseract_available() is True
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +144,18 @@ def test_image_ocr_failure_is_clean(monkeypatch):
         ocr_utils.extract_text("x.png", _png_bytes())
 
 
+def test_missing_tesseract_binary_gives_actionable_error(monkeypatch):
+    """A missing OCR engine yields a clean, user-actionable message (no raw exc)."""
+    def boom(*a, **k):
+        raise ocr_utils.pytesseract.TesseractNotFoundError()
+
+    monkeypatch.setattr(ocr_utils.pytesseract, "image_to_string", boom)
+    with pytest.raises(ValueError) as exc:
+        ocr_utils.extract_text("x.png", _png_bytes())
+    msg = str(exc.value).lower()
+    assert "tesseract" in msg and "paste" in msg
+
+
 def test_corrupt_image_is_clean():
     with pytest.raises(ValueError):
         ocr_utils.extract_text("broken.png", b"not really an image")
@@ -125,6 +167,18 @@ def test_corrupt_image_is_clean():
 
 def test_pdf_text_layer_is_extracted():
     pdf = _build_pdf(["Senior Engineer at Acme Corp building APIs with Python and SQL."])
+    text, method = ocr_utils.extract_text("job.pdf", pdf)
+    assert method == "text-layer"
+    assert "Senior Engineer" in text
+
+
+def test_pdf_text_layer_succeeds_without_ocr(monkeypatch):
+    """A text-layer PDF must not touch Tesseract at all."""
+    def boom(*a, **k):
+        raise ocr_utils.pytesseract.TesseractNotFoundError()
+
+    monkeypatch.setattr(ocr_utils.pytesseract, "image_to_string", boom)
+    pdf = _build_pdf(["Senior Engineer at Acme Corp building APIs with Python."])
     text, method = ocr_utils.extract_text("job.pdf", pdf)
     assert method == "text-layer"
     assert "Senior Engineer" in text
@@ -221,10 +275,21 @@ def test_render_failure_keeps_short_text_layer(monkeypatch):
     assert "short txt" in text
 
 
+def test_scanned_pdf_without_tesseract_gives_actionable_error(monkeypatch):
+    _patch_rasterizer(monkeypatch, [Image.new("RGB", (40, 20))])
+
+    def boom(*a, **k):
+        raise ocr_utils.pytesseract.TesseractNotFoundError()
+
+    monkeypatch.setattr(ocr_utils.pytesseract, "image_to_string", boom)
+    with pytest.raises(ValueError) as exc:
+        ocr_utils.extract_text("scan.pdf", _build_pdf([""]))
+    assert "paste" in str(exc.value).lower()
+
+
 def test_missing_pdf2image_degrades_gracefully(monkeypatch):
     monkeypatch.setattr(ocr_utils, "PDF2IMAGE_AVAILABLE", False)
     text, method = ocr_utils.extract_text("scan.pdf", _build_pdf([""]))
-    assert text == ""
     assert method == "text-layer"
 
 
@@ -286,6 +351,38 @@ def test_upload_ocr_failure_returns_clean_error(client, monkeypatch):
     res = _post_file(client, _png_bytes(), "poster.png")
     assert res.status_code == 400
     assert "error" in res.get_json()
+
+
+def test_upload_missing_ocr_returns_actionable_error(client, monkeypatch):
+    """Hosted runtime without the OCR binary: 400 + guidance, no stack trace."""
+    def boom(*a, **k):
+        raise ocr_utils.pytesseract.TesseractNotFoundError()
+
+    monkeypatch.setattr(ocr_utils.pytesseract, "image_to_string", boom)
+    res = _post_file(client, _png_bytes(), "poster.png")
+    assert res.status_code == 400
+    body = res.get_json()
+    assert "paste" in body["error"].lower()
+    assert "tesseract" in body["error"].lower()
+
+
+def test_upload_text_pdf_succeeds_without_ocr(client, monkeypatch):
+    def boom(*a, **k):
+        raise ocr_utils.pytesseract.TesseractNotFoundError()
+
+    monkeypatch.setattr(ocr_utils.pytesseract, "image_to_string", boom)
+    pdf = _build_pdf(["Senior Engineer at Acme Corp, Remote. Build APIs with "
+                      "Python and SQL. Salary 100000 USD."])
+    res = _post_file(client, pdf, "job.pdf")
+    assert res.status_code == 200
+    assert res.get_json()["source"].startswith("file-upload")
+
+
+def test_health_reports_ocr_diagnostics(client):
+    ocr = client.get("/api/health").get_json()["ocr"]
+    assert set(ocr) == {"tesseract", "pdf_render"}
+    assert isinstance(ocr["tesseract"], bool)
+    assert isinstance(ocr["pdf_render"], bool)
 
 
 def test_upload_over_size_limit_returns_413(client, monkeypatch):

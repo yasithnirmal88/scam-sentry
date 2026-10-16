@@ -151,12 +151,33 @@ export LLM_MODEL=gpt-4o-mini
 
 ### 1. System dependencies (OCR only; skip if you only use paste-text + scanner)
 
+Tesseract (image/scanned-PDF text) and Poppler (PDF rasterizing) are **system**
+binaries — `pip` does not install them. Everything except image/scanned-PDF
+upload works without them.
+
 ```bash
 # Debian/Ubuntu
 sudo apt-get install tesseract-ocr poppler-utils
 # macOS
 brew install tesseract poppler
+# Windows (winget)
+winget install UB-Mannheim.TesseractOCR          # then install Poppler
 ```
+
+On Windows the Tesseract installer is usually not on `PATH`; the app probes the
+default `C:\Program Files\Tesseract-OCR\tesseract.exe` automatically. For a
+custom location set `TESSERACT_CMD=C:\path\to\tesseract.exe` (see
+[Environment variables](#environment-variables)).
+
+| Works **without** OCR | Needs OCR (Tesseract) |
+|---|---|
+| Paste-text analysis | Uploaded screenshots / photos (`.png/.jpg/.jpeg`) |
+| Uploaded **text-based** PDFs (text layer extracted via pdfplumber) | **Scanned** PDFs with no text layer |
+| Scanner + dashboard | — |
+
+When the OCR engine is missing, an image/scanned-PDF upload returns a clear
+`400` ("OCR is unavailable on this server… paste the job text…") instead of a
+stack trace; text paste and text-based PDFs keep working.
 
 ### 2. Python setup
 
@@ -342,6 +363,8 @@ startup; exported environment variables always take precedence, and
 | `LOG_LEVEL` | `INFO` | Python log level |
 | `SCAM_SENTRY_DB` | `scam_sentry.db` | SQLite file |
 | `SCAM_SENTRY_NO_DOTENV` | `false` | When `true`/`1`, ignore a local `.env` and read only real environment variables |
+| `TESSERACT_CMD` | *(empty)* | Absolute path to the Tesseract binary when it is not on `PATH` (e.g. a custom Windows install). Empty = resolve from `PATH`, then the default Windows location |
+| `OCR_MAX_PDF_PAGES` / `OCR_PDF_DPI` / `OCR_MAX_IMAGE_PIXELS` | `5` / `150` / `20000000` | Upload/OCR hard caps (pages read, raster DPI, pixel budget) |
 | `DATABASE_URL` | *(empty)* | Postgres connection string. When set, it takes precedence over the SQLite file (Render/Neon/Supabase). Leave empty for local SQLite |
 | `SCAN_API_TOKEN` | *(empty)* | Shared secret required by `POST /api/scan` (sent in the `X-Scan-Token` header). Empty = fail-closed: the endpoint rejects every request unless `SCAN_ALLOW_ANONYMOUS=true` |
 | `SCAN_ALLOW_ANONYMOUS` | `false` | Dev/demo only: allow unauthenticated scans when `SCAN_API_TOKEN` is empty. Ignored when a token is set; never enable on a public deployment |
@@ -531,6 +554,14 @@ construction).
 
 `fakejob_app/` is the app root; `main` is the deploy branch.
 
+> **OCR (image / scanned-PDF upload) requires the Docker runtime.** The native
+> Python runtime on Render has no root/apt access, so `tesseract` and
+> `poppler-utils` **cannot** be installed there — image/scanned-PDF uploads
+> return a clean `400`. Paste-text analysis, text-based PDFs, and the scanner
+> all work on the native runtime. To enable OCR, deploy the included Dockerfile
+> as a **Docker** web service (see [OCR on Render / Docker](#ocr-on-render--docker)).
+> Confirm availability any time at `GET /api/health` → `{"ocr": {"tesseract": …}}`.
+
 The free-tier web service has an **ephemeral disk**, so the SQLite file resets
 on every deploy or restart. For durable scan history, attach a free Postgres:
 
@@ -551,6 +582,50 @@ Without `DATABASE_URL` the app falls back to `SCAM_SENTRY_DB`
 > **LLM note:** if you enable `LLM_ENABLED=true`, the app will refuse to boot
 > until `SCAN_API_TOKEN` and the rate limits are set — see [Abuse & cost
 > control](#abuse--cost-control).
+
+## OCR on Render / Docker
+
+Image and scanned-PDF extraction needs two OS packages that `pip` cannot provide:
+`tesseract-ocr` (OCR engine) and `poppler-utils` (`pdftoppm`, PDF → image). The
+`Dockerfile` installs both and fails the build if either is missing. Render's
+native runtime has no root/apt, so **use a Docker service when you need OCR**.
+
+**Docker deploy with system packages (recommended for OCR):**
+
+1. Render Dashboard → **New → Web Service** → connect this repo.
+2. Set **Runtime = Docker** (Render auto-detects the `Dockerfile`).
+   - **Dockerfile Path:** `fakejob_app/Dockerfile`
+   - **Docker Build Context Directory:** `fakejob_app`
+3. Environment variables (nothing OCR-specific is needed — the binaries are
+   baked into the image):
+   - `DATABASE_URL=postgresql://…?sslmode=require` (durable history; omit for
+     ephemeral SQLite)
+   - `SCAN_API_TOKEN=<long random>` and the rate limits (required to trigger
+     scans)
+   - Optional `SCAN_ALLOW_ANONYMOUS=true` for a token-free demo dashboard
+4. **Create / Redeploy.** The build runs `tesseract --version && pdftoppm -v`, so
+   a broken OCR layer fails the deploy instead of shipping silently.
+
+**Verify on the deployed app:**
+
+```bash
+# 1. OCR binaries present?
+curl https://<your-app>.onrender.com/api/health
+#    -> {"status":"ok", ..., "ocr":{"tesseract":true,"pdf_render":true}}
+
+# 2. End-to-end file analysis (no token needed; the analyze routes are
+#    rate-limited only). A text-based PDF works even without OCR; an image
+#    requires it:
+curl -X POST https://<your-app>.onrender.com/api/analyze/file \
+  -F "file=@poster.png"
+#    -> 200 with the verdict, or 400 with an actionable message if OCR is absent
+```
+
+If `/api/health` reports `"tesseract": false`, the service is running the native
+runtime (or a stale non-Docker image) rather than the Docker image above.
+
+> **Local Docker:** `docker build -t scam-sentry fakejob_app && docker run -p 5000:5000 scam-sentry`
+> runs with both binaries installed.
 
 ## Project structure
 

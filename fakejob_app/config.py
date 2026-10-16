@@ -52,6 +52,13 @@ MAX_PDF_PAGES = int(os.getenv("OCR_MAX_PDF_PAGES", "5"))
 PDF_OCR_DPI = int(os.getenv("OCR_PDF_DPI", "150"))
 MAX_IMAGE_PIXELS = int(os.getenv("OCR_MAX_IMAGE_PIXELS", "20000000"))
 
+# Explicit path to the Tesseract executable. Tesseract is a *system* dependency
+# (apt: tesseract-ocr) that pip never installs, so on hosts where it is not on
+# PATH (e.g. a native, non-Docker deploys) OCR is unavailable unless this is
+# pointed at a binary. Empty means "search PATH, then the common Windows
+# install location" (see ocr_utils).
+TESSERACT_CMD = os.getenv("TESSERACT_CMD", "").strip()
+
 MODEL_DIR = os.path.join(APP_DIR, "artifacts")
 MIN_TEXT_LENGTH = 15
 

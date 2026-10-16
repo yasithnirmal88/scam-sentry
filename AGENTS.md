@@ -43,6 +43,12 @@ python scan.py --list-sources         # CLI scanner
   ignored when a token is set). The analysis and scan endpoints are
   rate-limited per IP; with `LLM_ENABLED=true` the app refuses to start unless
   the token and rate limits are configured.
+- OCR (`ocr_utils.py`) needs the **system** binaries Tesseract (`tesseract-ocr`)
+  and Poppler (`poppler-utils`) — pip cannot install them, so they live in the
+  Dockerfile (verified at build time). Set `TESSERACT_CMD` for a non-PATH
+  install; when the engine is absent, image/scanned-PDF uploads return a clean
+  400 and text paste / text-based PDFs keep working. Text-layer PDFs never touch
+  Tesseract.
 - `normalize_url` only accepts http(s); other schemes return "".
 - Env-var config lives in `config.py`; keep new settings off by default.
   `config.py` auto-loads a local `.env` (python-dotenv, non-overriding) unless
