@@ -1,0 +1,53 @@
+# Render Blueprint for Scam Sentry.
+#
+# IMPORTANT: OCR (image / scanned-PDF upload) needs the system packages
+# `tesseract-ocr` and `poppler-utils`. These CANNOT be installed on Render's
+# native Python runtime (no root/apt), so the service MUST be built from the
+# Dockerfile. This Blueprint pins `runtime: docker` to guarantee that.
+#
+# If you create the service by hand instead, set:
+#   Language             = Docker
+#   Dockerfile Path      = fakejob_app/Dockerfile
+#   Docker Context       = fakejob_app
+#
+# Verify after deploy:  GET https://<app>.onrender.com/api/health
+#   -> {"status":"ok", ..., "ocr":{"tesseract":true,"pdf_render":true}}
+# yaml-language-server: $schema=https://render.com/schema/render.yaml.json
+services:
+  - type: web
+    name: scam-sentry
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./fakejob_app/Dockerfile
+    dockerContext: ./fakejob_app
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      # Set the value in the Render Dashboard (kept out of git by sync: false).
+      # Required to trigger scans via POST /api/scan (X-Scan-Token header).
+      - key: SCAN_API_TOKEN
+        sync: false
+      # Optional: Postgres connection string for durable scan history. Leave
+      # unset to use the (ephemeral) SQLite file inside the container.
+      - key: DATABASE_URL
+        sync: false
+      # Rate limits (per IP). Also constrained by the LLM fail-closed startup
+      # guard when LLM_ENABLED=true.
+      - key: RATE_LIMIT_ANALYZE
+        value: 30/minute
+      - key: RATE_LIMIT_SCAN
+        value: 5/minute
+      - key: RATE_LIMIT_READ
+        value: 240/minute
+      # The app runs behind Render's single proxy, so trust one hop for the real
+      # client IP used by the rate limiter.
+      - key: TRUSTED_PROXY_HOPS
+        value: "1"
+      # Background scheduler stays off by default.
+      - key: SCAN_ENABLED
+        value: "false"
+      # Dev/demo only: uncomment to let the token-free dashboard trigger scans.
+      # Never enable this on a public deployment.
+      # - key: SCAN_ALLOW_ANONYMOUS
+      #   value: "true"

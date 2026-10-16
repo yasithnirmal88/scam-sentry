@@ -7,7 +7,8 @@
 const LEVELS = ["Critical", "High", "Medium", "Low"];
 const LEVEL_EMOJI = { Critical: "🚨", High: "🔴", Medium: "🟡", Low: "🟢" };
 
-const state = { jobs: [], risk: "", source: "", q: "", industry: "", role: "" };
+const state = { jobs: [], risk: "", source: "", q: "", industry: "", role: "",
+                country: "", region: "", remote: "" };
 
 const groupsEl = document.getElementById("job-groups");
 const errorBox = document.getElementById("dash-error");
@@ -16,6 +17,8 @@ const scanBtn = document.getElementById("btn-scan");
 const scanLabel = document.getElementById("btn-scan-label");
 const industrySel = document.getElementById("filter-industry");
 const roleSel = document.getElementById("filter-role");
+const countrySel = document.getElementById("filter-country");
+const regionSel = document.getElementById("filter-region");
 
 function statusClass(status) {
   const s = (status || "unknown").toLowerCase();
@@ -121,6 +124,7 @@ function jobCard(job) {
 
 // ---- Industry / role search sections -----------------------------------
 let TAXONOMY = { industries: {} };
+let LOOKUPS = { countries: [], regions: [] };
 
 function rebuildRoleOptions() {
   if (!roleSel) return;
@@ -164,6 +168,30 @@ function populateIndustryOptions() {
   });
 }
 
+// ---- Country / region filter options ------------------------------------
+// Options are the distinct countries/regions present in the store, refreshed
+// on every load (the API returns them unfiltered, so the lists stay stable).
+function rebuildLocationOptions(select, values, allLabel, current) {
+  if (!select) return;
+  select.innerHTML = "";
+  const any = document.createElement("option");
+  any.value = "";
+  any.textContent = allLabel;
+  select.appendChild(any);
+  (values || []).forEach((v) => {
+    const opt = document.createElement("option");
+    opt.value = v;
+    opt.textContent = v;
+    select.appendChild(opt);
+  });
+  select.value = (values || []).includes(current) ? current : "";
+}
+
+function populateLocationOptions() {
+  rebuildLocationOptions(countrySel, LOOKUPS.countries, "All countries", state.country);
+  rebuildLocationOptions(regionSel, LOOKUPS.regions, "All regions", state.region);
+}
+
 async function loadTaxonomy() {
   try {
     const res = await fetch("/api/taxonomy");
@@ -192,6 +220,25 @@ if (roleSel) {
     loadJobs();
   });
 }
+if (countrySel) {
+  countrySel.addEventListener("change", (e) => {
+    state.country = e.target.value;
+    loadJobs();
+  });
+}
+if (regionSel) {
+  regionSel.addEventListener("change", (e) => {
+    state.region = e.target.value;
+    loadJobs();
+  });
+}
+const remoteSel = document.getElementById("filter-remote");
+if (remoteSel) {
+  remoteSel.addEventListener("change", (e) => {
+    state.remote = e.target.value;
+    loadJobs();
+  });
+}
 
 // Industry / role / source / keyword are filtered SERVER-SIDE (see loadJobs)
 // so a search is not silently limited to the client-side 200-row window and
@@ -208,6 +255,9 @@ function jobsQueryString() {
   if (state.industry) params.set("industry", state.industry);
   if (state.role) params.set("role", state.role);
   if (state.source) params.set("source", state.source);
+  if (state.country) params.set("country", state.country);
+  if (state.region) params.set("region", state.region);
+  if (state.remote) params.set("remote", state.remote);
   const q = state.q.trim();
   if (q) params.set("q", q);
   return params.toString();
@@ -219,7 +269,8 @@ function render() {
   jobs.forEach((j) => { (byLevel[j.overall_risk_level] || byLevel.Low).push(j); });
 
   const filtering = state.risk || state.source || state.q.trim()
-    || state.industry || state.role;
+    || state.industry || state.role || state.country || state.region
+    || state.remote;
 
   // When a filter matches nothing, every group would be hidden below, leaving
   // a blank page. Show one explicit "no matches" notice instead.
@@ -305,6 +356,8 @@ async function loadJobs() {
     if (seq !== loadSeq) return; // a newer request superseded this one
     if (!res.ok) throw new Error(data.error || "Failed to load jobs");
     state.jobs = data.jobs || [];
+    LOOKUPS = { countries: data.countries || [], regions: data.regions || [] };
+    populateLocationOptions();
     const counts = data.counts || {};
     ["critical", "high", "medium", "low"].forEach((k) => {
       const el = document.getElementById(`count-${k}`);

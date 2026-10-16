@@ -88,6 +88,9 @@
             {% if job.job_role and job.job_role != "Other" %}
             <span class="sample-chip legit">Role: {{ job.job_role }}</span>
             {% endif %}
+            {% if job.country and job.country != "Other" %}
+            <span class="sample-chip legit">Country: {{ job.country }}{% if job.region and job.region != job.country %} ({{ job.region }}){% endif %}</span>
+            {% endif %}
           </div>
         </div>
 
