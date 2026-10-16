@@ -401,8 +401,12 @@ async function startScan(sources) {
       return;
     }
     if (res.status === 401) {
-      scanStatus.textContent = "Unauthorized — this server requires a scan token (SCAN_API_TOKEN).";
-      throw new Error(data.error || "Scan failed: token required.");
+      // Fail-closed scan hardening (F-01): the dashboard never sends a token.
+      // Surface the server's setup hint so local/demo users know the two ways
+      // to enable scanning without weakening the default.
+      const hint = data.hint || data.error || "This server requires scan authentication.";
+      scanStatus.textContent = "Scan blocked — authentication required.";
+      throw new Error(hint);
     }
     if (!res.ok && res.status !== 202) throw new Error(data.error || data.reason || "Scan failed");
     if (res.status === 202 || data.status === "running") {

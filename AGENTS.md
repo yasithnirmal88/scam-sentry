@@ -45,6 +45,9 @@ python scan.py --list-sources         # CLI scanner
   the token and rate limits are configured.
 - `normalize_url` only accepts http(s); other schemes return "".
 - Env-var config lives in `config.py`; keep new settings off by default.
+  `config.py` auto-loads a local `.env` (python-dotenv, non-overriding) unless
+  `SCAM_SENTRY_NO_DOTENV` is truthy; tests set that flag via `tests/conftest.py`
+  so the suite is isolated from a developer's `.env`.
 
 ## Deploy
 

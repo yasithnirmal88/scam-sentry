@@ -11,6 +11,35 @@ import os
 
 APP_DIR = os.path.dirname(__file__)
 
+
+def _load_env_file(path: str) -> bool:
+    """Best-effort ``.env`` loader used at import time.
+
+    Loads ``path`` when it exists, without overriding variables already present
+    in the real environment (exported vars always win). Returns True if a file
+    was loaded, False otherwise. Never raises: when python-dotenv is missing or
+    the file is absent/unreadable the app just runs on the process environment.
+    """
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return False
+    if not os.path.exists(path):
+        return False
+    try:
+        return bool(load_dotenv(path, override=False))
+    except Exception:
+        return False
+
+
+# Auto-load a local ``.env`` (next to this file) before any settings are read
+# below. ``SCAM_SENTRY_NO_DOTENV`` (1/true/yes/on) disables it so tests and
+# hardened deployments can force pure environment variables. Real env vars are
+# never overridden.
+_NO_DOTENV = os.getenv("SCAM_SENTRY_NO_DOTENV", "").strip().lower() in {"1", "true", "yes", "on"}
+if not _NO_DOTENV:
+    _load_env_file(os.path.join(APP_DIR, ".env"))
+
 ALLOWED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg"}
 MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB
 
