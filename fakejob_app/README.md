@@ -550,17 +550,19 @@ construction).
 - Baseline security headers (`nosniff`, `SAMEORIGIN`, strict referrer, CSP).
 - This is a screening aid, not a verdict — always verify employers directly.
 
-## Deploy on Render (free tier, no Docker)
+## Deploy on Render
 
-`fakejob_app/` is the app root; `main` is the deploy branch.
+`fakejob_app/` is the app root; `main` is the deploy branch. For OCR (image /
+scanned-PDF upload) you **must** use the Docker runtime — see
+[OCR on Render / Docker](#ocr-on-render--docker). The native runtime (no root/apt)
+can still run paste-text, text-based PDFs, and the scanner.
 
 > **OCR (image / scanned-PDF upload) requires the Docker runtime.** The native
 > Python runtime on Render has no root/apt access, so `tesseract` and
 > `poppler-utils` **cannot** be installed there — image/scanned-PDF uploads
-> return a clean `400`. Paste-text analysis, text-based PDFs, and the scanner
-> all work on the native runtime. To enable OCR, deploy the included Dockerfile
-> as a **Docker** web service (see [OCR on Render / Docker](#ocr-on-render--docker)).
-> Confirm availability any time at `GET /api/health` → `{"ocr": {"tesseract": …}}`.
+> return a clean `400`. To enable OCR, deploy the shipped `render.yaml`
+> (Blueprint) or set Language = Docker. Confirm availability any time at
+> `GET /api/health` → `{"ocr": {"tesseract": …}}`.
 
 The free-tier web service has an **ephemeral disk**, so the SQLite file resets
 on every deploy or restart. For durable scan history, attach a free Postgres:
@@ -585,44 +587,75 @@ Without `DATABASE_URL` the app falls back to `SCAM_SENTRY_DB`
 
 ## OCR on Render / Docker
 
-Image and scanned-PDF extraction needs two OS packages that `pip` cannot provide:
-`tesseract-ocr` (OCR engine) and `poppler-utils` (`pdftoppm`, PDF → image). The
-`Dockerfile` installs both and fails the build if either is missing. Render's
-native runtime has no root/apt, so **use a Docker service when you need OCR**.
+Image and scanned-PDF extraction needs two OS packages that `pip` cannot
+provide: `tesseract-ocr` (OCR engine) and `poppler-utils` (`pdftoppm`, PDF →
+image). The `Dockerfile` installs both and **fails the build if either is
+missing**. Render's native Python runtime has no root/apt, so those packages
+exist **only** when the service is built from the Dockerfile. A native deploy
+will return `"ocr":{"tesseract":false}` and reject image/scanned-PDF uploads
+with a clean `400` (paste-text and text-based PDFs still work).
 
-**Docker deploy with system packages (recommended for OCR):**
+### Option 1 — Blueprint (recommended): `render.yaml`
 
-1. Render Dashboard → **New → Web Service** → connect this repo.
-2. Set **Runtime = Docker** (Render auto-detects the `Dockerfile`).
-   - **Dockerfile Path:** `fakejob_app/Dockerfile`
-   - **Docker Build Context Directory:** `fakejob_app`
-3. Environment variables (nothing OCR-specific is needed — the binaries are
-   baked into the image):
-   - `DATABASE_URL=postgresql://…?sslmode=require` (durable history; omit for
-     ephemeral SQLite)
-   - `SCAN_API_TOKEN=<long random>` and the rate limits (required to trigger
-     scans)
-   - Optional `SCAN_ALLOW_ANONYMOUS=true` for a token-free demo dashboard
-4. **Create / Redeploy.** The build runs `tesseract --version && pdftoppm -v`, so
-   a broken OCR layer fails the deploy instead of shipping silently.
+The repo ships a `render.yaml` that pins `runtime: docker` and the correct
+paths:
 
-**Verify on the deployed app:**
-
-```bash
-# 1. OCR binaries present?
-curl https://<your-app>.onrender.com/api/health
-#    -> {"status":"ok", ..., "ocr":{"tesseract":true,"pdf_render":true}}
-
-# 2. End-to-end file analysis (no token needed; the analyze routes are
-#    rate-limited only). A text-based PDF works even without OCR; an image
-#    requires it:
-curl -X POST https://<your-app>.onrender.com/api/analyze/file \
-  -F "file=@poster.png"
-#    -> 200 with the verdict, or 400 with an actionable message if OCR is absent
+```yaml
+runtime: docker
+dockerfilePath: ./fakejob_app/Dockerfile
+dockerContext: ./fakejob_app
+healthCheckPath: /api/health
 ```
 
-If `/api/health` reports `"tesseract": false`, the service is running the native
-runtime (or a stale non-Docker image) rather than the Docker image above.
+1. Render Dashboard → **New → Blueprint** → connect this repo.
+2. Render reads `render.yaml` and creates the service as a **Docker** web
+   service. Provide values for `SCAN_API_TOKEN` (and `DATABASE_URL` if you have
+   Postgres) when prompted (`sync: false` keeps them out of git).
+3. **Apply** the Blueprint, then redeploy if needed.
+
+### Option 2 — Create the web service manually
+
+1. Render Dashboard → **New → Web Service** → connect this repo.
+2. Set **Language = Docker** (do not pick Python).
+   - **Dockerfile Path:** `fakejob_app/Dockerfile`
+   - **Docker Context Directory:** `fakejob_app`
+3. Environment (nothing OCR-specific — the binaries are baked into the image):
+   - `SCAN_API_TOKEN=<long random>` and the rate limits (to trigger scans)
+   - `DATABASE_URL=postgresql://…?sslmode=require` (durable history; optional)
+   - Optional `SCAN_ALLOW_ANONYMOUS=true` for a token-free demo dashboard
+4. **Create / Redeploy.** The build runs `tesseract --version && pdftoppm -v`, so
+   a missing OCR layer fails the deploy instead of shipping silently.
+
+### Post-deploy verification
+
+```bash
+APP=https://<your-app>.onrender.com
+
+# 1. OCR binaries present? (must be true/true on a Docker deploy)
+curl -s $APP/api/health
+#    -> {"status":"ok", ..., "ocr":{"tesseract":true,"pdf_render":true}}
+
+# 2. Image / screenshot (needs OCR)
+curl -s -X POST $APP/api/analyze/file -F "file=@poster.png"
+#    -> 200 with the verdict; 400 only if OCR is genuinely absent
+
+# 3. Text-based PDF (works with or without OCR)
+curl -s -X POST $APP/api/analyze/file -F "file=@job.pdf"
+
+# 4. Pasted text (no OCR at all)
+curl -s -X POST $APP/api/analyze/text \
+  -H "Content-Type: application/json" \
+  -d '{"text":"Senior Engineer at Acme Corp, Remote. Build APIs with Python."}'
+#    -> 200
+```
+
+In the UI: **/analyze** → upload an image (OCR), upload a text PDF (no OCR), or
+paste text (no OCR). Startup logs also print a line such as
+`OCR toolchain: tesseract=True (cmd='tesseract'), pdf_render=True (poppler)`.
+
+**Troubleshooting:** if `tesseract` is `false` in `/api/health`, the service is
+on the **native** runtime (or a stale image). Switch it to Docker (Options 1/2)
+and redeploy; you cannot `apt-get install` on the native runtime.
 
 > **Local Docker:** `docker build -t scam-sentry fakejob_app && docker run -p 5000:5000 scam-sentry`
 > runs with both binaries installed.

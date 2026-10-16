@@ -85,6 +85,11 @@ def test_deploy_files_exist():
     assert "python:3.12-slim-bookworm" in content
     assert "USER appuser" in content
     assert "HEALTHCHECK" in content and "/api/health" in content
+    # OCR needs OS packages that pip cannot install, so the image must ship
+    # them and verify them at build time.
+    assert "tesseract-ocr" in content
+    assert "poppler-utils" in content
+    assert "tesseract --version" in content and "pdftoppm -v" in content
     reqs = open(os.path.join(root, "requirements.txt")).read()
     assert "gunicorn" in reqs
     assert "Flask-Limiter" in reqs
@@ -92,3 +97,18 @@ def test_deploy_files_exist():
     for keyword in ("/dashboard", "SCAN_ENABLED", "/api/scan", "remoteok",
                     "arbeitnow", "jobicy", "pytest", "gunicorn", ".env.example"):
         assert keyword.lower() in readme.lower(), keyword
+
+
+def test_render_blueprint_pins_docker_runtime():
+    """OCR needs apt packages, so the Blueprint must build the Dockerfile.
+
+    A native-runtime Render service cannot install tesseract/poppler, so the
+    Blueprint exists specifically to force the Docker path.
+    """
+    render_yaml = os.path.join(os.path.dirname(config.APP_DIR), "render.yaml")
+    assert os.path.exists(render_yaml)
+    content = open(render_yaml).read()
+    assert "runtime: docker" in content
+    assert "dockerfilePath: ./fakejob_app/Dockerfile" in content
+    assert "dockerContext: ./fakejob_app" in content
+    assert "/api/health" in content
