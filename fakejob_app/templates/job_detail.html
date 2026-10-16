@@ -34,7 +34,7 @@
       <div class="nav-links">
         <a class="nav-link-btn" href="{{ url_for('dashboard') }}">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
-          <span>Return to Dashboard</span>
+          <span>Back to Dashboard</span>
         </a>
         <a class="nav-link-btn" href="{{ url_for('index') }}">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -49,7 +49,7 @@
     <section class="card">
       <div class="error-alert">{{ error or "The requested job posting could not be found in the database." }}</div>
       <div style="margin-top:16px;">
-        <a class="btn-primary" href="{{ url_for('dashboard') }}">&larr; Return to Risk Dashboard</a>
+        <a class="btn-primary" href="{{ url_for('dashboard') }}">&larr; Back to Dashboard</a>
       </div>
     </section>
     {% else %}
@@ -126,6 +126,11 @@
           <div class="metric-meta">Source: {{ job.source or "Direct" }}</div>
         </div>
       </div>
+
+      <div class="disclaimer-callout" style="margin-top:14px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <p>The ML probability is a supporting signal from a model trained on a synthetic-trained dataset; the risk verdict is set by the deterministic Risk Engine, never by the ML score.</p>
+      </div>
     </section>
 
     <!-- Employer Verification Status Card -->
@@ -177,8 +182,8 @@
         {% for ind in job.key_indicators %}
         <div class="evidence-item">
           <div class="evidence-body">
-            <strong>{{ ind.id }} &bull; {{ ind.label }}</strong>
-            <p>{{ ind.detail }}</p>
+            <strong>{{ ind.id }} &bull; {{ ind.name or ind.label }}</strong>
+            <p>{{ ind.detail or ind.explanation or ind.evidence }}</p>
             {% if ind.quote %}
             <div class="evidence-quote">&ldquo;{{ ind.quote }}&rdquo;</div>
             {% endif %}
@@ -209,8 +214,8 @@
         <div class="action-item">
           <span class="action-bullet">&#10004;</span>
           <div class="action-content">
-            <strong>{{ act.action or act.title or act }}</strong>
-            {% if act.detail %}<p>{{ act.detail }}</p>{% endif %}
+            <p>{{ act.action if act is mapping else act }}</p>
+            {% if act is mapping and act.detail %}<p>{{ act.detail }}</p>{% endif %}
           </div>
         </div>
         {% endfor %}

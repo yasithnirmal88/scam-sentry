@@ -1897,9 +1897,12 @@ textarea#job-text::placeholder {
   letter-spacing: 0.04em;
 }
 
-.status-success { background: var(--safe-bg); color: #34d399; border: 1px solid var(--safe-border); }
+.status-ok, .status-success { background: var(--safe-bg); color: #34d399; border: 1px solid var(--safe-border); }
 .status-partial { background: var(--warn-bg); color: #fbbf24; border: 1px solid var(--warn-border); }
-.status-failed { background: var(--danger-bg); color: #fb7185; border: 1px solid var(--danger-border); }
+.status-fail, .status-failed { background: var(--danger-bg); color: #fb7185; border: 1px solid var(--danger-border); }
+.status-busy { background: rgba(0, 240, 255, 0.18); color: #22d3ee; border: 1px solid rgba(0, 240, 255, 0.35); }
+.status-empty { background: rgba(148, 163, 184, 0.16); color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.32); }
+.status-unknown { background: rgba(255, 255, 255, 0.08); color: #94a3b8; border: 1px solid rgba(255, 255, 255, 0.15); }
 
 /* Dossier Header */
 .dossier-header-card {

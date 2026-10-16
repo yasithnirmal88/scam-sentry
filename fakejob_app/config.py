@@ -11,6 +11,40 @@ import os
 
 APP_DIR = os.path.dirname(__file__)
 
+
+def _load_env_file(path: str) -> bool:
+    """Best-effort ``.env`` loader used at import time.
+
+    Loads ``path`` when it exists, without overriding variables already present
+    in the real environment (exported vars always win). Returns True if a file
+    was loaded, False otherwise. Never raises: when python-dotenv is missing or
+    the file is absent/unreadable the app just runs on the process environment.
+    """
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return False
+    if not os.path.exists(path):
+        return False
+    try:
+        return bool(load_dotenv(path, override=False))
+    except Exception:
+        return False
+
+
+# Auto-load a local ``.env`` (next to this file) before any settings are read
+# below. ``SCAM_SENTRY_NO_DOTENV`` (1/true/yes/on) disables it so tests and
+# hardened deployments can force pure environment variables. Real env vars are
+# never overridden.
+def load_env_file(path: str) -> bool:
+    """Public alias for loading a .env file (kept for tests)."""
+    return _load_env_file(path)
+
+
+_NO_DOTENV = os.getenv("SCAM_SENTRY_NO_DOTENV", "").strip().lower() in {"1", "true", "yes", "on"}
+if not _NO_DOTENV:
+    _load_env_file(os.path.join(APP_DIR, ".env"))
+
 ALLOWED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg"}
 MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB
 
@@ -22,6 +56,13 @@ MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB
 MAX_PDF_PAGES = int(os.getenv("OCR_MAX_PDF_PAGES", "5"))
 PDF_OCR_DPI = int(os.getenv("OCR_PDF_DPI", "150"))
 MAX_IMAGE_PIXELS = int(os.getenv("OCR_MAX_IMAGE_PIXELS", "20000000"))
+
+# Explicit path to the Tesseract executable. Tesseract is a *system* dependency
+# (apt: tesseract-ocr) that pip never installs, so on hosts where it is not on
+# PATH (e.g. a native, non-Docker deploys) OCR is unavailable unless this is
+# pointed at a binary. Empty means "search PATH, then the common Windows
+# install location" (see ocr_utils).
+TESSERACT_CMD = os.getenv("TESSERACT_CMD", "").strip()
 
 MODEL_DIR = os.path.join(APP_DIR, "artifacts")
 MIN_TEXT_LENGTH = 15
@@ -132,7 +173,11 @@ SCAN_API_TOKEN = os.getenv("SCAN_API_TOKEN", "").strip()
 # SCAN_API_TOKEN is set this flag is ignored (the token always wins). The LLM
 # startup guard still refuses to boot with LLM_ENABLED=true and no token, so
 # the spend path can never be left open. Never enable on a public deployment.
-SCAN_ALLOW_ANONYMOUS = os.getenv("SCAN_ALLOW_ANONYMOUS", "true").lower() == "true"
+if os.getenv("GITHUB_ACTIONS") and "SCAN_ALLOW_ANONYMOUS" not in os.environ:
+    _scan_allow_anonymous_env = "false"
+else:
+    _scan_allow_anonymous_env = os.getenv("SCAN_ALLOW_ANONYMOUS", "false")
+SCAN_ALLOW_ANONYMOUS = _scan_allow_anonymous_env.lower() == "true"
 # Per-IP allowed request rate on the analysis endpoints and on the scan-trigger
 # endpoint. Flask-Limiter parses these (e.g. "30/minute"). The app refuses to
 # boot the LLM layer unless both are set.

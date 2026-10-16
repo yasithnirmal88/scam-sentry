@@ -27,6 +27,7 @@ jobs:
           --health-retries 5
     env:
       TEST_POSTGRES_URL: postgresql://postgres:postgres@localhost:5432/scam_sentry
+      SCAN_ALLOW_ANONYMOUS: "false"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

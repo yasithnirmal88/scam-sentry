@@ -375,7 +375,7 @@ function renderReport(data) {
   if (elSrc) elSrc.textContent = data.source || "Direct text";
 
   // ML Transparency Details
-  const mlCaveat = document.getElementById("ml-caveat");
+  const mlCaveat = document.getElementById("ml-note-text") || document.getElementById("ml-caveat");
   const mlRaw = document.getElementById("ml-raw-stats");
   if (data.ml_meta) {
     if (mlCaveat && data.ml_meta.caveat) mlCaveat.textContent = data.ml_meta.caveat;
