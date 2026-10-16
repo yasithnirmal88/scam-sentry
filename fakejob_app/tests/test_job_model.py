@@ -317,14 +317,21 @@ def test_sqlite_backfills_location_for_legacy_rows(tmp_path):
             "('Berlin Job', 'Berlin, Germany', 'https://example.com/berlin')")
         conn.execute(
             "INSERT INTO jobs (title, location, url) VALUES "
+            "('London Job', 'London', 'https://example.com/london')")
+        conn.execute(
+            "INSERT INTO jobs (title, location, url) VALUES "
             "('Remote Job', 'Remote', 'https://example.com/remote')")
         conn.commit()
 
     init_db(path)
     berlin = get_job(1, path)
     assert (berlin["country"], berlin["region"]) == ("Germany", "Europe")
-    assert get_job(2, path)["country"] == "Remote"
-    assert location_options(path)["countries"] == ["Germany", "Remote"]
+    # A bare city with no country token is resolved too.
+    assert get_job(2, path)["country"] == "United Kingdom"
+    assert get_job(3, path)["country"] == "Remote"
+    assert location_options(path)["countries"] == [
+        "Germany", "Remote", "United Kingdom"]
     # Idempotent: a second init neither duplicates nor clears the values.
     init_db(path)
-    assert location_options(path)["countries"] == ["Germany", "Remote"]
+    assert location_options(path)["countries"] == [
+        "Germany", "Remote", "United Kingdom"]

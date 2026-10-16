@@ -46,8 +46,20 @@ def test_country_inside_a_longer_string():
     assert normalize_location("based in Canada") == ("Canada", "North America")
 
 
+def test_bare_city_resolves_to_country():
+    assert normalize_location("London") == ("United Kingdom", "Europe")
+    assert normalize_location("New York, NY") == ("United States", "North America")
+    assert normalize_location("Bangalore") == ("India", "Asia")
+    assert normalize_location("San Francisco") == ("United States", "North America")
+    # multi-word city matched as a phrase inside a longer string.
+    assert normalize_location("Based in San Francisco") == (
+        "United States", "North America")
+    # a real country in the string still wins over a city name.
+    assert normalize_location("London, Canada") == ("Canada", "North America")
+
+
 def test_unknown_returns_blanks():
-    assert normalize_location("New York, NY") == ("", "")
+    assert normalize_location("Nowhereville, XX") == ("", "")
     assert normalize_location("Somewhere") == ("", "")
     assert normalize_location("") == ("", "")
     assert normalize_location(None) == ("", "")
@@ -65,6 +77,7 @@ def test_canonical_country():
     assert canonical_country("UK") == "United Kingdom"
     assert canonical_country("Germany") == "Germany"
     assert canonical_country("Remote") == REMOTE
+    assert canonical_country("London") == "United Kingdom"
     assert canonical_country("Nowhereland") == ""
     assert canonical_country("") == ""
 
