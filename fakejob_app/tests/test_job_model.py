@@ -14,7 +14,7 @@ The ``db`` fixture (tests/conftest.py) runs each test once per backend:
 
 from models.job import (
     JobRecord, count_jobs, get_job, get_last_scan, init_db, list_jobs,
-    record_scan_run, risk_counts, save_job,
+    location_options, record_scan_run, risk_counts, save_job,
 )
 from models.storage import SQLiteBackend, select_backend
 
@@ -174,6 +174,74 @@ def test_default_industry_role_is_other(db):
     assert job["job_role"] == "Other"
 
 
+def test_location_normalized_on_save(db):
+    init_db(db)
+    rec = _sample("https://example.com/de")
+    rec.location = "Berlin, Germany"
+    jid = save_job(rec, db)
+    job = get_job(jid, db)
+    assert job["country"] == "Germany"
+    assert job["region"] == "Europe"
+
+    # Terser location: plain "Remote".
+    plain = save_job(_sample("https://example.com/remote"), db)
+    assert get_job(plain, db)["country"] == "Remote"
+
+
+def test_explicit_country_wins_over_location(db):
+    init_db(db)
+    rec = _sample("https://example.com/explicit")
+    rec.location = "Berlin, Germany"
+    rec.country = "Customland"
+    rec.region = "Custom Region"
+    jid = save_job(rec, db)
+    job = get_job(jid, db)
+    # Explicit values are never overwritten by inference from the location.
+    assert job["country"] == "Customland"
+    assert job["region"] == "Custom Region"
+
+
+def test_country_region_filter_and_totals(db):
+    init_db(db)
+    de = _sample("https://example.com/de-jobs")
+    de.location = "Berlin, Germany"
+    de.industry = "Technology & IT"
+    de.job_role = "Software Engineer"
+    us = _sample("https://example.com/us")
+    us.location = "Austin, USA"
+    remote = _sample("https://example.com/remote-job")
+    remote.location = "Remote"
+    de_id = save_job(de, db)
+    us_id = save_job(us, db)
+    remote_id = save_job(remote, db)
+    assert de_id > 0 and us_id > 0 and remote_id > 0
+
+    germany = list_jobs(country="Germany", db_path=db)
+    assert [r["id"] for r in germany] == [de_id]
+    assert count_jobs(country="Germany", db_path=db) == 1
+    # "USA" must resolve to the canonical "United States".
+    assert [r["id"] for r in list_jobs(country="USA", db_path=db)] == [us_id]
+    # region filter matches every country in that region.
+    assert count_jobs(region="Europe", db_path=db) == 1
+    assert count_jobs(region="North America", db_path=db) == 1
+    # remote filter.
+    assert [r["id"] for r in list_jobs(remote=True, db_path=db)] == [remote_id]
+    assert remote_id not in [r["id"] for r in list_jobs(remote=False, db_path=db)]
+
+
+def test_location_options_lists_distinct_values(db):
+    init_db(db)
+    for loc, url in (("Berlin, Germany", "a"), ("Munich, Germany", "b"),
+                     ("Austin, USA", "c"), ("Remote", "d")):
+        rec = _sample("https://example.com/opt-" + url)
+        rec.location = loc
+        save_job(rec, db)
+    opts = location_options(db)
+    assert opts["countries"] == ["Germany", "Remote", "United States"]
+    assert "Europe" in opts["regions"] and "North America" in opts["regions"]
+    assert opts["regions"] == sorted(opts["regions"])
+
+
 def test_sqlite_migrates_old_schema_in_place(tmp_path):
     """A jobs table created before the industry/role feature is lifted to
     the current schema on init_db, keeping existing rows ("Other")."""
@@ -229,5 +297,7 @@ def test_sqlite_migrates_old_schema_in_place(tmp_path):
     assert job["title"] == "Legacy Job"
     assert job["industry"] == "Other"
     assert job["job_role"] == "Other"
+    assert job["country"] == ""
+    assert job["region"] == ""
     # Migration is idempotent.
     init_db(path)
