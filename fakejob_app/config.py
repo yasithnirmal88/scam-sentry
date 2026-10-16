@@ -36,6 +36,11 @@ def _load_env_file(path: str) -> bool:
 # below. ``SCAM_SENTRY_NO_DOTENV`` (1/true/yes/on) disables it so tests and
 # hardened deployments can force pure environment variables. Real env vars are
 # never overridden.
+def load_env_file(path: str) -> bool:
+    """Public alias for loading a .env file (kept for tests)."""
+    return _load_env_file(path)
+
+
 _NO_DOTENV = os.getenv("SCAM_SENTRY_NO_DOTENV", "").strip().lower() in {"1", "true", "yes", "on"}
 if not _NO_DOTENV:
     _load_env_file(os.path.join(APP_DIR, ".env"))
@@ -168,7 +173,11 @@ SCAN_API_TOKEN = os.getenv("SCAN_API_TOKEN", "").strip()
 # SCAN_API_TOKEN is set this flag is ignored (the token always wins). The LLM
 # startup guard still refuses to boot with LLM_ENABLED=true and no token, so
 # the spend path can never be left open. Never enable on a public deployment.
-SCAN_ALLOW_ANONYMOUS = os.getenv("SCAN_ALLOW_ANONYMOUS", "false").lower() == "true"
+if os.getenv("GITHUB_ACTIONS") and "SCAN_ALLOW_ANONYMOUS" not in os.environ:
+    _scan_allow_anonymous_env = "false"
+else:
+    _scan_allow_anonymous_env = os.getenv("SCAN_ALLOW_ANONYMOUS", "false")
+SCAN_ALLOW_ANONYMOUS = _scan_allow_anonymous_env.lower() == "true"
 # Per-IP allowed request rate on the analysis endpoints and on the scan-trigger
 # endpoint. Flask-Limiter parses these (e.g. "30/minute"). The app refuses to
 # boot the LLM layer unless both are set.
