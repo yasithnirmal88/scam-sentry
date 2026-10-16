@@ -717,5 +717,12 @@ if config.SCAN_ENABLED and (not config.FLASK_DEBUG
     from services import scheduler
     scheduler.start_background()
 
+# One-line startup diagnostic so deploy logs show whether the OCR toolchain is
+# present. Image / scanned-PDF uploads need the system Tesseract binary, which
+# only exists when the app is deployed from the Dockerfile (see README).
+logger.info("OCR toolchain: tesseract=%s (cmd=%r), pdf_render=%s (poppler)",
+            ocr_utils.tesseract_available(), ocr_utils.TESSERACT_CMD,
+            ocr_utils.PDF2IMAGE_AVAILABLE)
+
 if __name__ == "__main__":
     app.run(host=config.FLASK_HOST, port=config.FLASK_PORT, debug=config.FLASK_DEBUG)
