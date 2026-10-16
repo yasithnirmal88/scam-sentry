@@ -170,7 +170,21 @@
             <option value="">All Job Roles</option>
           </select>
         </div>
-        <div class="dash-filter-summary" id="filter-summary">Showing all monitored postings</div>
+        <div class="dash-browse-title">Search by Country / Region</div>
+        <div class="dash-filter-row">
+          <select id="filter-country" class="dash-select" aria-label="Filter by country">
+            <option value="">All countries</option>
+          </select>
+          <select id="filter-region" class="dash-select" aria-label="Filter by region">
+            <option value="">All regions</option>
+          </select>
+          <select id="filter-remote" class="dash-select" aria-label="Filter by remote or on-site">
+            <option value="">Remote &amp; on-site</option>
+            <option value="true">Remote / Worldwide</option>
+            <option value="false">On-site / Non-remote</option>
+          </select>
+        </div>
+        <div class="dash-filter-summary" id="filter-summary" aria-live="polite"></div>
       </div>
 
       <div class="dash-scan">
@@ -273,6 +287,6 @@
     </div>
   </footer>
 
-  <script src="{{ url_for('static', filename='dashboard.js') }}?v=12"></script>
+  <script src="{{ url_for('static', filename='dashboard.js') }}?v=10"></script>
 </body>
 </html>
