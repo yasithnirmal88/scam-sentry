@@ -88,6 +88,43 @@ def test_match_cv_min_fit_filter(cv_client):
     assert all(m["fit_score"] >= 90 for m in body["matches"])
 
 
+def test_match_cv_scope_filters_narrow_candidates(cv_client):
+    """Board / career / location scope filters the panel now sends."""
+    _seed_jobs()
+    save_job(JobRecord(
+        title="Travel Nurse", company="Kyoto Care",
+        location="Kyoto, Japan",
+        description="Registered nurse for a Tokyo ward. Night shifts.",
+        url="https://example.com/jp", source="remotive",
+        overall_risk_level="Low", industry="Healthcare & Nursing",
+        job_role="Nurse"))
+    save_job(JobRecord(
+        title="Remote Staff Nurse", company="CareAnywhere",
+        location="Remote",
+        description="Telehealth triage nurse, remote shifts.",
+        url="https://example.com/care", source="remoteok",
+        overall_risk_level="Low", industry="Healthcare & Nursing",
+        job_role="Nurse"))
+
+    def post(**extra):
+        # Same encoding the browser panel uses (multipart form fields).
+        return cv_client.post(
+            "/api/match/cv",
+            data={"cv_text": CV_TEXT, **extra},
+            content_type="multipart/form-data").get_json()
+
+    assert post()["candidate_jobs"] == 4
+    assert post(source="remotive")["candidate_jobs"] == 1
+    assert post(country="Japan")["candidate_jobs"] == 1
+    assert post(region="Europe")["candidate_jobs"] == 1
+    assert post(industry="Healthcare & Nursing")["candidate_jobs"] == 2
+    assert post(role="Nurse")["candidate_jobs"] == 2
+    assert post(remote="true")["candidate_jobs"] == 1
+    scoped = post(source="remoteok", role="Nurse", country="Japan")
+    assert scoped["candidate_jobs"] == 0  # combined scope ANDs down
+    assert scoped["filters"]["country"] == "Japan"
+
+
 def test_match_cv_rejects_unsupported_extension(cv_client):
     data = {"file": (io.BytesIO(b"legacy"), "cv.doc")}
     res = cv_client.post("/api/match/cv", data=data,

@@ -21,6 +21,14 @@
   const minFitEl = document.getElementById("cv-min-fit");
   const riskEl = document.getElementById("cv-risk");
   const hideRiskyEl = document.getElementById("cv-hide-risky");
+  const scopeEls = [
+    ["source", document.getElementById("cv-source")],
+    ["industry", document.getElementById("cv-industry")],
+    ["role", document.getElementById("cv-role")],
+    ["country", document.getElementById("cv-country")],
+    ["region", document.getElementById("cv-region")],
+    ["remote", document.getElementById("cv-remote")],
+  ];
 
   const LEVEL_EMOJI = { Critical: "🚨", High: "🔴", Medium: "🟡", Low: "🟢" };
 
@@ -117,6 +125,13 @@
     if (minFitEl) form.append("min_fit", minFitEl.value || "0");
     if (riskEl && riskEl.value) form.append("risk_level", riskEl.value);
     if (hideRiskyEl && hideRiskyEl.checked) form.append("exclude_risky", "1");
+    const applied = [];
+    scopeEls.forEach(([name, el]) => {
+      if (el && el.value) {
+        form.append(name, el.value);
+        applied.push(el.value);
+      }
+    });
 
     setBusy(true);
     setStatus("Reading your CV and scoring scanned jobs…", false);
@@ -128,10 +143,12 @@
       if (!res.ok) throw new Error(data.error || "Could not match jobs right now.");
       const n = data.total_matches || 0;
       const candidates = data.candidate_jobs || 0;
+      const scopeNote = applied.length ? ` Scope: ${applied.join(", ")}.` : "";
       setStatus(
-        n
+        (n
           ? `Found ${n} match${n === 1 ? "" : "es"} among ${candidates} scanned job${candidates === 1 ? "" : "s"}.`
-          : `No matches found among ${candidates} scanned job${candidates === 1 ? "" : "s"}.`,
+          : `No matches found among ${candidates} scanned job${candidates === 1 ? "" : "s"}.`)
+          + scopeNote,
         false);
       renderResults(data);
     } catch (err) {

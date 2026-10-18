@@ -142,12 +142,16 @@ function jobCard(job) {
 let TAXONOMY = { industries: {} };
 let LOOKUPS = { countries: [], regions: [] };
 
-function rebuildRoleOptions() {
-  if (!roleSel) return;
-  const selected = state.industry;
+const cvIndSel = document.getElementById("cv-industry");
+const cvRoleSel = document.getElementById("cv-role");
+const cvCountrySel = document.getElementById("cv-country");
+const cvRegionSel = document.getElementById("cv-region");
+
+function rebuildRoleOptions(select, industry, current) {
+  if (!select) return;
   let roles = [];
-  if (selected) {
-    roles = (TAXONOMY.industries[selected] || []).slice();
+  if (industry) {
+    roles = (TAXONOMY.industries[industry] || []).slice();
   } else {
     const seen = new Set();
     Object.values(TAXONOMY.industries).forEach((list) => {
@@ -156,32 +160,49 @@ function rebuildRoleOptions() {
     roles.sort();
   }
   roles.push("Other");
-  roleSel.innerHTML = "";
+  select.innerHTML = "";
   const any = document.createElement("option");
   any.value = "";
   any.textContent = "All roles";
-  roleSel.appendChild(any);
+  select.appendChild(any);
   roles.forEach((r) => {
     const opt = document.createElement("option");
     opt.value = r;
     opt.textContent = r;
-    roleSel.appendChild(opt);
+    select.appendChild(opt);
   });
+  select.value = roles.includes(current) ? current : "";
 }
 
-function populateIndustryOptions() {
-  if (!industrySel) return;
-  industrySel.innerHTML = "";
+function rebuildDashboardRoleOptions() {
+  rebuildRoleOptions(roleSel, state.industry, state.role);
+}
+
+function rebuildCvRoleOptions() {
+  rebuildRoleOptions(cvRoleSel, cvIndSel ? cvIndSel.value : "",
+                     cvRoleSel ? cvRoleSel.value : "");
+}
+
+function fillIndustryOptions(select) {
+  if (!select) return;
+  const current = select.value;
+  select.innerHTML = "";
   const any = document.createElement("option");
   any.value = "";
   any.textContent = "All industries";
-  industrySel.appendChild(any);
+  select.appendChild(any);
   Object.keys(TAXONOMY.industries).forEach((name) => {
     const opt = document.createElement("option");
     opt.value = name;
     opt.textContent = name;
-    industrySel.appendChild(opt);
+    select.appendChild(opt);
   });
+  select.value = current; // fall back to "" when the value no longer exists
+}
+
+function populateIndustryOptions() {
+  fillIndustryOptions(industrySel);
+  fillIndustryOptions(cvIndSel);
 }
 
 // ---- Country / region filter options ------------------------------------
@@ -206,6 +227,10 @@ function rebuildLocationOptions(select, values, allLabel, current) {
 function populateLocationOptions() {
   rebuildLocationOptions(countrySel, LOOKUPS.countries, "All countries", state.country);
   rebuildLocationOptions(regionSel, LOOKUPS.regions, "All regions", state.region);
+  rebuildLocationOptions(cvCountrySel, LOOKUPS.countries, "All countries",
+                         cvCountrySel ? cvCountrySel.value : "");
+  rebuildLocationOptions(cvRegionSel, LOOKUPS.regions, "All regions",
+                         cvRegionSel ? cvRegionSel.value : "");
 }
 
 async function loadTaxonomy() {
@@ -215,7 +240,8 @@ async function loadTaxonomy() {
     if (!res.ok) throw new Error(data.error || "Failed to load industry/role options");
     TAXONOMY = data || { industries: {} };
     populateIndustryOptions();
-    rebuildRoleOptions();
+    rebuildDashboardRoleOptions();
+    rebuildCvRoleOptions();
   } catch (err) {
     // Options stay empty; industry/role filters then simply match nothing.
   }
@@ -226,8 +252,14 @@ if (industrySel) {
     state.industry = e.target.value;
     state.role = "";
     if (roleSel) roleSel.value = "";
-    rebuildRoleOptions();
+    rebuildDashboardRoleOptions();
     loadJobs();
+  });
+}
+if (cvIndSel) {
+  cvIndSel.addEventListener("change", () => {
+    if (cvRoleSel) cvRoleSel.value = "";
+    rebuildCvRoleOptions();
   });
 }
 if (roleSel) {

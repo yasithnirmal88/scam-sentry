@@ -187,6 +187,37 @@ def test_dashboard_has_country_region_controls(history_client):
     assert 'id="filter-remote"' in dash
 
 
+def test_cv_panel_wires_dashboard_scope_filters(history_client):
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    html = (root / "templates" / "dashboard.html").read_text(encoding="utf-8")
+    js = (root / "static" / "cv_matcher.js").read_text(encoding="utf-8")
+    djs = (root / "static" / "dashboard.js").read_text(encoding="utf-8")
+    # The CV panel reuses the dashboard's scope controls: board source,
+    # industry, job role, country, region, remote.
+    for el_id in ("cv-source", "cv-industry", "cv-role",
+                  "cv-country", "cv-region", "cv-remote"):
+        assert f'id="{el_id}"' in html
+    # cv_matcher.js sends each non-empty one to /api/match/cv.
+    for el_id in ("cv-source", "cv-industry", "cv-role",
+                  "cv-country", "cv-region", "cv-remote"):
+        assert f'"{el_id}"' in js
+    assert "form.append(name, el.value)" in js
+    assert "scopeEls" in js
+    # dashboard.js fills industry / role / location options for both panels.
+    assert '"cv-industry"' in djs
+    assert '"cv-role"' in djs
+    assert '"cv-country"' in djs
+    assert '"cv-region"' in djs
+    assert "rebuildCvRoleOptions" in djs
+    assert "populateIndustryOptions" in djs
+    # And the rendered page carries the controls (source is server-rendered).
+    dash = history_client.get("/dashboard").get_data(as_text=True)
+    assert 'id="cv-source"' in dash
+    assert 'id="cv-country"' in dash
+    assert 'id="cv-region"' in dash
+
+
 def test_dashboard_scan_flow_needs_no_token_when_anonymous_enabled(
         history_client, monkeypatch):
     """Local dev/demo: with SCAN_ALLOW_ANONYMOUS=true and no token, the
