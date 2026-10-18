@@ -248,6 +248,44 @@
         <label class="scan-check cv-check"><input type="checkbox" id="cv-hide-risky" checked> Hide High &amp; Critical matches</label>
       </div>
 
+      <div class="cv-filters" aria-label="Narrow matches by board, career, and location">
+        <label class="cv-field">Source
+          <select id="cv-source" class="dash-select" aria-label="Limit matches to a board source">
+            <option value="">All sources</option>
+            {% for s in sources %}
+            <option value="{{ s }}">{{ s }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="cv-field">Industry
+          <select id="cv-industry" class="dash-select" aria-label="Limit matches to an industry">
+            <option value="">All industries</option>
+          </select>
+        </label>
+        <label class="cv-field">Job role
+          <select id="cv-role" class="dash-select" aria-label="Limit matches to a job role">
+            <option value="">All roles</option>
+          </select>
+        </label>
+        <label class="cv-field">Country
+          <select id="cv-country" class="dash-select" aria-label="Limit matches to a country">
+            <option value="">All countries</option>
+          </select>
+        </label>
+        <label class="cv-field">Region
+          <select id="cv-region" class="dash-select" aria-label="Limit matches to a region">
+            <option value="">All regions</option>
+          </select>
+        </label>
+        <label class="cv-field">Remote
+          <select id="cv-remote" class="dash-select" aria-label="Limit matches to remote or on-site">
+            <option value="">Remote &amp; on-site</option>
+            <option value="true">Remote / Worldwide</option>
+            <option value="false">On-site / Non-remote</option>
+          </select>
+        </label>
+      </div>
+
       <div class="cv-status file-status-text" id="cv-status" aria-live="polite">Upload a CV to see your best-matching scanned jobs.</div>
       <div class="cv-signals" id="cv-signals" hidden></div>
       <div class="cv-results job-cards" id="cv-results"></div>
@@ -331,7 +369,7 @@
     </div>
   </footer>
 
-  <script src="{{ url_for('static', filename='dashboard.js') }}?v=11"></script>
-  <script src="{{ url_for('static', filename='cv_matcher.js') }}?v=2"></script>
+  <script src="{{ url_for('static', filename='dashboard.js') }}?v=12"></script>
+  <script src="{{ url_for('static', filename='cv_matcher.js') }}?v=3"></script>
 </body>
 </html>
