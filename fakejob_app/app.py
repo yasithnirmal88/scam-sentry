@@ -804,6 +804,27 @@ def api_taxonomy():
     return jsonify({"industries": INDUSTRIES})
 
 
+@app.route("/api/locations", methods=["GET"])
+@limiter.limit(lambda: config.RATE_LIMIT_READ)
+def api_locations():
+    """Canonical world regions and countries for geographic filter pickers. Public."""
+    import location
+    stored = location_options()
+    stored_countries = set(stored.get("countries", []))
+    stored_regions = set(stored.get("regions", []))
+    all_regions = sorted(stored_regions.union(location.supported_regions()))
+    all_countries = sorted(stored_countries.union(location.supported_countries()))
+    return jsonify({
+        "countries": all_countries,
+        "regions": all_regions,
+        "stored_countries": sorted(list(stored_countries)),
+        "stored_regions": sorted(list(stored_regions)),
+    })
+
+
+
+
+
 # ---------------------------------------------------------------------------
 # Job Risk Dashboard (Phase 2, server-rendered pages on top of the API)
 # ---------------------------------------------------------------------------

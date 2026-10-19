@@ -369,3 +369,14 @@ def canonical_region(value: Any) -> str:
 def region_for_country(country: Any) -> Optional[str]:
     """Region for a canonical country name (None when unknown)."""
     return _COUNTRY_REGION.get(str(country or "").strip())
+
+
+def supported_regions() -> list[str]:
+    """List of all canonical world regions supported by Scam Sentry."""
+    return sorted([r for r in _REGIONS if r != REMOTE]) + [REMOTE]
+
+
+def supported_countries() -> list[str]:
+    """List of all canonical countries supported by Scam Sentry."""
+    return sorted(list(_COUNTRY_REGION.keys()))
+

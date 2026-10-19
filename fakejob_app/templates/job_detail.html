@@ -7,7 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=12">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=13">
+
 </head>
 <body>
 
@@ -32,6 +33,12 @@
         </div>
       </div>
       <div class="nav-links">
+        {% if job and job.url %}
+        <a class="nav-link-btn btn-nav-external" href="{{ job.url }}" target="_blank" rel="noopener noreferrer" title="Open the real job listing in a new tab">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          <span>Open Real Job Post &nearr;</span>
+        </a>
+        {% endif %}
         <a class="nav-link-btn" href="{{ url_for('dashboard') }}">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
           <span>Back to Dashboard</span>
@@ -73,10 +80,20 @@
           <p class="score-sub-label">
             <strong>{{ job.company }}</strong>
             {% if job.location %} &bull; <span>{{ job.location }}</span>{% endif %}
-            {% if job.url %}&bull; <a href="{{ job.url }}" target="_blank" rel="noopener noreferrer" class="link-external">Original Posting Link &nearr;</a>{% endif %}
+            {% if job.url %}&bull; <a href="{{ job.url }}" target="_blank" rel="noopener noreferrer" class="link-external" title="Open the real job listing in a new tab">Original Posting Link &nearr;</a>{% endif %}
           </p>
           
+          {% if job.url %}
+          <div style="margin-top:12px; margin-bottom:12px;">
+            <a href="{{ job.url }}" target="_blank" rel="noopener noreferrer" class="btn-external-posting">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              <span>Visit Real Job Posting ({{ job.source or 'Original Site' }}) &rarr;</span>
+            </a>
+          </div>
+          {% endif %}
+
           <p class="dossier-summary-text">{{ job.summary }}</p>
+
           
           <div class="sample-buttons" style="margin-top:14px; display:flex; gap:8px; flex-wrap:wrap;">
             {% for cat in job.risk_categories %}

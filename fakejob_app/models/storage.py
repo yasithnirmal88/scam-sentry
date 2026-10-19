@@ -266,6 +266,8 @@ class _BaseBackend:
             "regions": [str(r["region"]) for r in regions],
         }
 
+
+
     def risk_counts(self) -> dict[str, int]:
         rows = self._fetch_all(
             "SELECT overall_risk_level, COUNT(*) AS n FROM jobs "
