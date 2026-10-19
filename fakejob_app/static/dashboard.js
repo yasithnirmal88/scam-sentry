@@ -247,6 +247,21 @@ async function loadTaxonomy() {
   }
 }
 
+async function loadLocations() {
+  try {
+    const res = await fetch("/api/locations");
+    const data = await res.json();
+    if (res.ok && data) {
+      if (data.countries && data.countries.length) LOOKUPS.countries = data.countries;
+      if (data.regions && data.regions.length) LOOKUPS.regions = data.regions;
+      populateLocationOptions();
+    }
+  } catch (err) {
+    // Fall back to locations populated via loadJobs
+  }
+}
+
+
 if (industrySel) {
   industrySel.addEventListener("change", (e) => {
     state.industry = e.target.value;
@@ -404,8 +419,16 @@ async function loadJobs() {
     if (seq !== loadSeq) return; // a newer request superseded this one
     if (!res.ok) throw new Error(data.error || "Failed to load jobs");
     state.jobs = data.jobs || [];
-    LOOKUPS = { countries: data.countries || [], regions: data.regions || [] };
+    if (data.countries && data.countries.length) {
+      const mergedCountries = new Set([...(LOOKUPS.countries || []), ...data.countries]);
+      LOOKUPS.countries = Array.from(mergedCountries).sort();
+    }
+    if (data.regions && data.regions.length) {
+      const mergedRegions = new Set([...(LOOKUPS.regions || []), ...data.regions]);
+      LOOKUPS.regions = Array.from(mergedRegions).sort();
+    }
     populateLocationOptions();
+
     const counts = data.counts || {};
     ["critical", "high", "medium", "low"].forEach((k) => {
       const el = document.getElementById(`count-${k}`);
@@ -563,6 +586,8 @@ loadJobs();
 loadHistory();
 refreshScanStatus();
 loadTaxonomy();
+loadLocations();
+
 
 // ------------------------------------------------------------------
 // Cyber Security Constellation & Neural Mesh Canvas Animation
