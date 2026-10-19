@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=10">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=12">
 </head>
 <body>
 
@@ -242,15 +242,35 @@
 
   <footer class="footer">
     <div class="footer-wrap">
-      <div class="footer-brand">
-        <strong>Scam Sentry</strong> &bull; Intelligent Fake Job Advertisement Detection System
+      <div class="footer-top">
+        <div class="footer-brand-block">
+          <div class="footer-logo">
+            <svg class="footer-shield" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+            <strong>Scam Sentry</strong>
+            <span class="footer-badge">Case Dossier</span>
+          </div>
+          <p class="footer-tagline">In-depth Forensic Risk Breakdown &amp; Scam Indicator Analysis</p>
+        </div>
+        <div class="footer-nav">
+          <span class="footer-nav-title">Navigation</span>
+          <div class="footer-links">
+            <a href="{{ url_for('index') }}">Single-Job Analyzer</a>
+            <a href="{{ url_for('dashboard') }}">Job Risk Dashboard</a>
+            <a href="{{ url_for('health') }}">System Status</a>
+          </div>
+        </div>
       </div>
-      <div class="footer-sub">
-        General Sir John Kotelawala Defence University &bull; Faculty of Computing &bull; Group 44
-      </div>
-      <div class="footer-links">
-        <a href="{{ url_for('index') }}">Single-Job Analyzer</a>
-        <a href="{{ url_for('dashboard') }}">Risk Dashboard</a>
+      <div class="footer-divider"></div>
+      <div class="footer-bottom">
+        <div class="footer-copy">
+          &copy; 2026 Scam Sentry &bull; Enterprise Threat Surveillance. All rights reserved.
+        </div>
+        <div class="footer-telemetry">
+          <span class="status-indicator-dot"></span>
+          <span>Deterministic Risk Engine &bull; Synthetic-Trained GBC</span>
+        </div>
       </div>
     </div>
   </footer>
